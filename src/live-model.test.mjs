@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {normalizePackage} from '../backend/core.mjs';
+import {mapPackage,reviewResume,displayModel,scoreModel,splitEmail,latexReadingView} from './live-model.mjs';
+const original='Jordan Test\nEXPERIENCE\nBuilt a Python tool for 3 users.\nSKILLS\nPython';
+const raw={edits:[{before:'Built a Python tool for 3 users.',after:'Developed a Python tool for 3 users.',reason:'Clarify'}],coverLetter:'Dear team',recommendation:'Subject: Reference\n\nDear mentor',recommendations:['Verify Docker'],requirements:{keywords:[{label:'Python',evidence:'Python'},{label:'Docker',evidence:''}],skills:[],experience:[]}};
+const selected=['resume','coverLetter','recommendation'];
+const data=normalizePackage(original,selected,raw);
+const pkg=mapPackage(data,original,selected);
+test('live preview and LaTeX use server output and revert restores original',()=>{assert.ok(reviewResume(pkg,[]).text.includes('Developed'));assert.equal(reviewResume(pkg,['m1']).text,original);assert.ok(reviewResume(pkg,[]).latex.includes('Developed'));assert.ok(reviewResume(pkg,['m1']).latex.includes('Built'));});
+test('match and missing skills come from server',()=>{assert.equal(displayModel(pkg).missingSkills[0],'Docker');assert.equal(scoreModel(pkg).total,50);assert.equal(scoreModel(pkg).skills,null)});
+test('email and LaTeX reading view',()=>{assert.equal(splitEmail(raw.recommendation,'','').body,'Dear mentor');assert.ok(latexReadingView(reviewResume(pkg,[]).latex).includes('Jordan Test'))});
+test('misaligned data and missing documents rejected',()=>{assert.throws(()=>mapPackage({...data,changes:[{...data.changes[0],start:0}]},original,selected));assert.throws(()=>mapPackage({...data,documents:{}},original,selected))});
