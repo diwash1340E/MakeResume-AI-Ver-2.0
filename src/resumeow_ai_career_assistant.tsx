@@ -1613,11 +1613,11 @@ const SavedDrawer = ({ open, onClose, apps, onLoad, onStatusChange, onDelete }) 
 // ============================================================================
 // 7. MAIN RESUMEOW APPLICATION
 // ============================================================================
-const THEME_STORAGE_KEY = 'resumeow_theme_v4';
+const THEME_STORAGE_KEY = 'resumeow_theme_v5';
 const SAVED_STORAGE_KEY = 'resumeow_saved_apps_v4';
 
 export default function App() {
-  // Theme (Defaults to Warm Off-White Light Mode, persisted)
+  // Theme (Defaults to Dark Mode, persisted)
   const [theme, setTheme] = useState(() => {
     try {
       const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -1625,7 +1625,7 @@ export default function App() {
     } catch {
       // ignore storage issues
     }
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {
