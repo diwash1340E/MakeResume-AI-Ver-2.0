@@ -14,6 +14,10 @@ Use Node.js 22+ and npm.
 
 `npm run build` builds the frontend. `npm run start` serves the built frontend and API. `npm test` tests deterministic backend logic without a key.
 
+## Final React design preview
+
+The user-approved `src/resumeow_ai_career_assistant.tsx` is preserved exactly as uploaded. Run `npm run dev` and open http://127.0.0.1:3000/design.html to review it. It is a separate mock-data prototype (no API calls); use sample data only. The root URL still serves the existing API-connected HTML frontend. Do not use demo-generated claims or scores in a real application. The next implementation step is to bind the final React design to the existing extraction and generation API and replace its sample persistence, scores and document builders with real results. The new Vite configuration builds both entry pages.
+
 ## Behavior and limitations
 
 - PDF and LaTeX text extraction use Gemini. Plain text is read in the browser. Review extracted text before generation; OCR and extraction can miss or misread facts.
