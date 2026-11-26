@@ -13,7 +13,7 @@ html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 "Bricolage Grotesque",system-ui,sans-serif}
 button,input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--lav);outline-offset:3px;border-radius:4px}
-.app{max-width:1080px;margin:0 auto;padding:20px 24px 80px}
+.app{max-width:1680px;margin:0 auto;padding:20px clamp(24px,5vw,80px) 80px}
 header{display:flex;align-items:center;justify-content:space-between;padding:8px 0 28px}
 .logo{font-weight:700;font-size:22px;letter-spacing:-.02em}.logo i{font-style:normal;color:var(--lav)}
 .mock{font-size:13px;color:var(--mute);background:var(--peach);padding:3px 10px;border-radius:99px}
@@ -99,9 +99,15 @@ del{color:var(--mute);background:var(--peach);text-decoration:line-through}
 @keyframes roll{to{left:calc(100% - 26px);transform:rotate(720deg)}}
 .miss{border:0;font:inherit;font-size:13px;cursor:pointer;transition:background .2s,transform .1s}.miss:active{transform:scale(.93)}
 .verdict{font-size:14px;color:var(--lav);font-weight:700;margin:4px 0 0}
+header{gap:12px;flex-wrap:wrap}
+.quiet .cat:not([data-state=success]) *{animation:none}
+.res .hero{grid-template-columns:90px 1fr;padding-bottom:16px;gap:16px}.res .cat{width:90px;height:86px}.res .hero h1{font-size:20px}.res .say{font-size:14px}
+.jump{cursor:pointer;transition:background .2s}.jump:hover{background:var(--lav-s)}
+mark.flash{animation:fl 1.6s}@keyframes fl{0%,60%{background:var(--org);color:#fff}}
+.brk{margin:10px 0 0;display:grid;gap:4px;font-size:13px;min-width:220px}.brk>div{display:grid;grid-template-columns:76px 1fr 24px;gap:8px;align-items:center}.brk dt{color:var(--mute)}.brk dd{display:contents;margin:0}.brk i{height:4px;border-radius:4px;background:var(--line);position:relative}.brk i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);background:var(--lav);border-radius:4px;transform-origin:left;animation:grow .8s ease both}@keyframes grow{from{transform:scaleX(0)}}.brk b{font-weight:500}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style></head><body><div class="app">
-<header><div class="logo">Resu<i>Meow</i></div><span class="mock">Mock data: nothing is sent to a server</span></header>
+<header><div class="logo">Resu<i>Meow</i></div><span class="mock">Mock data: nothing is sent to a server</span><button class="ghost" id="quiet" aria-pressed="false">Quiet cat: off</button></header>
 
 <section class="hero">
 <svg class="cat" id="cat" data-state="idle" viewBox="0 0 200 190" role="img" aria-label="Orange cat assistant">
@@ -139,11 +145,11 @@ del{color:var(--mute);background:var(--peach);text-decoration:line-through}
 </main>
 
 <section id="results">
-<div class="top"><div><div class="score"><span id="sc">82</span><small>/100</small></div><p class="hint" style="margin:4px 0 0">Job match (mock)</p><p class="verdict" id="vd"></p></div>
+<div class="top"><div><div class="score"><span id="sc">82</span><small>/100</small></div><p class="hint" style="margin:4px 0 0">Job match (mock)</p><p class="verdict" id="vd"></p><dl class="brk"><div><dt>Keywords</dt><dd><i style="--w:74%"></i><b>74</b></dd></div><div><dt>Skills</dt><dd><i style="--w:88%"></i><b>88</b></dd></div><div><dt>Experience</dt><dd><i style="--w:85%"></i><b>85</b></dd></div></dl><p class="hint" style="margin:6px 0 0;font-size:13px">Weighted: keywords 40%, skills 30%, experience 30%.</p></div>
 <div><p class="hint" style="margin:0 0 6px">Missing from your resume. Tap any you actually have.</p><div class="chips"><button class="chip miss" aria-pressed="false">PyTorch</button><button class="chip miss" aria-pressed="false">MLOps</button><button class="chip miss" aria-pressed="false">Docker</button><span class="chip ok">Python</span><span class="chip ok">Reinforcement learning</span></div></div>
 <div class="tools"><button class="ghost" id="copy">Copy</button><button class="ghost" id="dl">Download .tex</button><button class="ghost" id="back">New application</button></div></div>
 <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-p="p1">Preview</button><button role="tab" aria-selected="false" data-p="p2">LaTeX</button><button role="tab" aria-selected="false" data-p="p3">Compare</button><button role="tab" aria-selected="false" data-p="p4">Changes</button></div>
-<div class="pane on" id="p1"><div class="paper"><h3>Alex Rivera</h3><p class="hint">alex@example.com · Lubbock, TX</p><p><b>Research</b><br>Trained PPO agents under simulated actuator failures; <mark class="new">improved recovery reward by 18% in PyTorch-based experiments</mark>.</p><p><b>Projects</b><br>Built a resume tool with React and TypeScript; <mark class="new">shipped a Dockerized demo</mark>.</p></div></div>
+<div class="pane on" id="p1"><div class="paper"><h3>Alex Rivera</h3><p class="hint">alex@example.com · Lubbock, TX</p><p><b>Research</b><br>Trained PPO agents under simulated actuator failures; <mark class="new" id="m1">improved recovery reward by 18% in PyTorch-based experiments</mark>.</p><p><b>Projects</b><br>Built a resume tool with React <mark class="new" id="m2">and TypeScript</mark>.</p></div></div>
 <div class="pane" id="p2"><pre id="tex">\documentclass[11pt]{article}
 \usepackage[margin=0.7in]{geometry}
 \begin{document}
@@ -151,10 +157,10 @@ del{color:var(--mute);background:var(--peach);text-decoration:line-through}
 \textbf{Research}\\
 Trained PPO agents under simulated actuator failures; improved recovery reward by 18\% in PyTorch-based experiments.
 \end{document}</pre></div>
-<div class="pane" id="p3"><div class="cmp"><div><p class="hint">Original</p><p>Trained PPO agents under simulated actuator failures.</p><p>Built a resume tool with React.</p></div><div><p class="hint">Modified</p><p>Trained PPO agents under simulated actuator failures; <mark class="new">improved recovery reward by 18% in PyTorch-based experiments</mark>.</p><p>Built a resume tool with React <mark class="new">and TypeScript</mark>.</p></div></div></div>
-<div class="pane" id="p4"><p class="hint">Applied to your resume vs. ideas for you to decide on.</p>
-<div class="chg"><span class="tag a">Applied</span>Reworded the research bullet to match “PyTorch” in the posting.</div>
-<div class="chg"><span class="tag a">Applied</span>Added TypeScript to the resume project to mirror the stack.</div>
+<div class="pane" id="p3"><p class="hint">2 lines changed. Green is added text. Struck-through text was replaced.</p><div class="cmp"><div><p class="hint">Original</p><p>Trained PPO agents under simulated actuator failures<del>.</del></p><p>Built a resume tool with React<del>.</del></p></div><div><p class="hint">Modified</p><p>Trained PPO agents under simulated actuator failures; <mark class="new">improved recovery reward by 18% in PyTorch-based experiments</mark>.</p><p>Built a resume tool with React <mark class="new">and TypeScript</mark>.</p></div></div></div>
+<div class="pane" id="p4"><p class="hint">Applied to your resume vs. ideas for you to decide on. Select an applied change to see it in the preview.</p>
+<div class="chg jump" data-t="m1" tabindex="0" role="button"><span class="tag a">Applied</span>Reworded the research bullet to match “PyTorch” in the posting.</div>
+<div class="chg jump" data-t="m2" tabindex="0" role="button"><span class="tag a">Applied</span>Added TypeScript to the resume project to mirror the stack.</div>
 <div class="chg"><span class="tag s">Suggested</span>Add a Docker or MLOps project if you have one. Not changed in your resume.</div>
 <div class="chg"><span class="tag s">Suggested</span>Quantify the second project. Only you know the real numbers.</div></div>
 </section></div>
@@ -173,22 +179,27 @@ document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.quer
 $('#gen').onclick=()=>{
  if(!$('#jd').value.trim()){$('#err').textContent='Add a job description so there is something to tailor to.';set('error','Hmm, I need a job description.');return}
  $('#err').textContent='';$('#gw').classList.add('busy');set('generating','Typing up your documents…');
- setTimeout(()=>{$('#gw').classList.remove('busy');$('#work').style.display='none';$('#results').style.display='block';set('review','Reviewing the draft. Check what changed.');countUp();window.scrollTo({top:0,behavior:'smooth'})},2200)};
+ setTimeout(()=>{$('#gw').classList.remove('busy');$('#work').style.display='none';$('#results').style.display='block';set('review','Reviewing the draft. Check what changed.');countUp();document.body.classList.add('res');window.scrollTo({top:0,behavior:'smooth'})},2200)};
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===b.dataset.p))});
 $('#copy').onclick=()=>{try{navigator.clipboard.writeText($('#tex').textContent)}catch(e){}$('#copy').textContent='Copied';set('success','Copied. Good luck out there!');setTimeout(()=>{$('#copy').textContent='Copy';set('review','Reviewing the draft.')},2500)};
 $('#dl').onclick=()=>set('success','Download is a stub in this prototype.');
-$('#back').onclick=()=>{$('#results').style.display='none';$('#work').style.display='block';idle()};
+$('#back').onclick=()=>{$('#results').style.display='none';$('#work').style.display='block';document.body.classList.remove('res');idle()};
 // naps after 25s of quiet, wakes on any click or key
-let nap;function wake(){clearTimeout(nap);nap=setTimeout(()=>{if(cat.dataset.state==='idle')set('sleep','Zzz… tap me when you’re back.')},25000)}
+let nap,quiet=false;function wake(){clearTimeout(nap);if(quiet)return;nap=setTimeout(()=>{if(cat.dataset.state==='idle')set('sleep','Zzz… tap me when you’re back.')},25000)}
 addEventListener('pointerdown',()=>{if(cat.dataset.state==='sleep')idle()});addEventListener('keydown',()=>{if(cat.dataset.state==='sleep')idle()});
 // pupils follow the cursor while idle
-addEventListener('pointermove',e=>{if(cat.dataset.state!=='idle')return;const r=cat.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy)||1,k=Math.min(3,d/60);cat.querySelectorAll('.pupil').forEach(p=>p.style.transform='translate('+dx/d*k+'px,'+dy/d*k+'px)');wake()});
+addEventListener('pointermove',e=>{if(quiet||cat.dataset.state!=='idle')return;const r=cat.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy)||1,k=Math.min(3,d/60);cat.querySelectorAll('.pupil').forEach(p=>p.style.transform='translate('+dx/d*k+'px,'+dy/d*k+'px)');wake()});
 // boop the cat
 const quips=['Purr… that tickles.','Your bullet points are looking sharp.','I knock things off tables. Never your resume.','Quantify your impact. Numbers get interviews.','Have you had some water lately?'];let qi=0;
-cat.addEventListener('click',e=>{if(cat.dataset.state==='sleep')return;const h=document.createElement('span');h.className='heart';h.textContent='♥';h.setAttribute('aria-hidden','true');h.style.left=e.clientX-8+'px';h.style.top=e.clientY-20+'px';document.body.append(h);setTimeout(()=>h.remove(),1000);say.textContent=quips[qi++%quips.length]});
+cat.addEventListener('click',e=>{if(quiet||cat.dataset.state==='sleep')return;const h=document.createElement('span');h.className='heart';h.textContent='♥';h.setAttribute('aria-hidden','true');h.style.left=e.clientX-8+'px';h.style.top=e.clientY-20+'px';document.body.append(h);setTimeout(()=>h.remove(),1000);say.textContent=quips[qi++%quips.length]});
 // score counts up, then a verdict
 function countUp(){const el=$('#sc'),t=82,v='A purr-fect fit. Close the keyword gaps for the rest.';if(matchMedia('(prefers-reduced-motion:reduce)').matches){el.textContent=t;$('#vd').textContent=v;return}let n=0;const iv=setInterval(()=>{n+=2;if(n>=t){n=t;clearInterval(iv);$('#vd').textContent=v}el.textContent=n},18)}
 // tap a missing keyword you actually have
 document.querySelectorAll('.miss').forEach(c=>c.onclick=()=>{const on=c.classList.toggle('ok');c.setAttribute('aria-pressed',on);set(on?'success':'review',on?c.textContent+' noted. Add it to your resume only if it’s true.':'Back on the missing list.');setTimeout(()=>set('review','Reviewing the draft.'),1800)});
+// quiet mode: no quips, napping, or eye-tracking; idle loops stop
+$('#quiet').onclick=e=>{quiet=!quiet;document.body.classList.toggle('quiet',quiet);e.target.setAttribute('aria-pressed',quiet);e.target.textContent='Quiet cat: '+(quiet?'on':'off');if(quiet){clearTimeout(nap);if(cat.dataset.state==='sleep')idle()}else wake()};
+// changes list jumps to the edit in the preview
+function tab(id){document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x.dataset.p===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id))}
+document.querySelectorAll('.jump').forEach(c=>{const go=()=>{tab('p1');const m=$('#'+c.dataset.t);m.scrollIntoView({block:'center',behavior:'smooth'});m.classList.remove('flash');void m.offsetWidth;m.classList.add('flash')};c.onclick=go;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});
 wake();
 </script></body></html>
