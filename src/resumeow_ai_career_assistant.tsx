@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { requestApi, fileToBase64, mapPackage, reviewResume, displayModel, scoreModel, splitEmail, latexReadingView } from './live-model.mjs';
 
 // ============================================================================
 // 1. DESIGN TOKENS, TYPOGRAPHY & LIGHTWEIGHT ANIMATION STYLES
@@ -342,82 +343,6 @@ function analyzeResumeStats(text) {
  * Lightweight parser so direct edits in the Overleaf LaTeX editor
  * immediately reflect in the side-by-side Resume Preview pane.
  */
-function parseCustomLatexToBlocks(tex) {
-  const cleanTex = (s) =>
-    s
-      .replace(/\\%/g, '%')
-      .replace(/\\&/g, '&')
-      .replace(/\\_/g, '_')
-      .replace(/\$\\cdot\$/g, '·')
-      .replace(/--/g, '–')
-      .replace(/\\\\/g, '')
-      .replace(/\\textbf\{([^}]*)\}/g, '$1')
-      .replace(/\\textit\{([^}]*)\}/g, '$1')
-      .replace(/\\hfill/g, ' — ')
-      .trim();
-
-  const lines = tex.split('\n');
-  let name = 'Alex Rivera';
-  let contact = '';
-  const sections = [];
-  let currentSec = null;
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith('%')) continue;
-    if (
-      line.startsWith('\\documentclass') ||
-      line.startsWith('\\usepackage') ||
-      line.startsWith('\\pagestyle') ||
-      line === '\\begin{document}' ||
-      line === '\\end{document}' ||
-      line.startsWith('\\begin{itemize}') ||
-      line.startsWith('\\end{itemize}')
-    ) {
-      continue;
-    }
-
-    const secMatch = line.match(/^\\section\*?\{([^}]+)\}/);
-    if (secMatch) {
-      name = cleanTex(secMatch[1]);
-      continue;
-    }
-
-    const subMatch = line.match(/^\\subsection\*?\{([^}]+)\}/);
-    if (subMatch) {
-      currentSec = { title: cleanTex(subMatch[1]), items: [] };
-      sections.push(currentSec);
-      continue;
-    }
-
-    if (!currentSec) {
-      contact = contact ? `${contact} ${cleanTex(line)}` : cleanTex(line);
-      continue;
-    }
-
-    if (line.startsWith('\\item')) {
-      currentSec.items.push({
-        type: 'bullet',
-        text: cleanTex(line.replace(/^\\item\s*/, '')),
-      });
-    } else if (line.includes('\\hfill')) {
-      const [left, right] = line.split('\\hfill');
-      currentSec.items.push({
-        type: 'heading',
-        left: cleanTex(left),
-        right: cleanTex(right),
-      });
-    } else {
-      currentSec.items.push({
-        type: 'text',
-        text: cleanTex(line),
-      });
-    }
-  }
-
-  return { name, contact, sections };
-}
-
 // ============================================================================
 // 4. SAMPLE MASTER RESUME & 3 REALISTIC DEMO PRESETS
 // ============================================================================
@@ -490,259 +415,37 @@ Python, Go, TypeScript, C++, SQL, React, Node.js, PostgreSQL, Redis, gRPC, Reinf
 \\end{document}`;
 
 const DEMO_PRESETS = {
-  stripe: {
-    id: 'stripe',
-    label: 'Stripe — SWE Intern',
-    subtitle: 'Core Payments Infrastructure',
-    company: 'Stripe',
-    position: 'Software Engineering Intern',
-    fileName: 'Alex_Rivera_Master_Resume.pdf',
-    notes: 'One page only. Emphasize distributed systems, PostgreSQL latency, and API reliability.',
-    intensity: 'Balanced',
-    jd: `Stripe — Software Engineering Intern, Core Payments Infrastructure
-
-Design, build, and scale fault-tolerant distributed APIs processing millions of financial requests with sub-100ms latency and strict reliability guarantees.
-
-Responsibilities:
-- Build resilient backend services in Go or Python with strong Observability and Testing.
-- Optimize PostgreSQL queries, indexing strategies, and asynchronous webhook pipelines.
-- Collaborate across REST APIs, Distributed Systems, and developer tooling teams.
-
-Qualifications:
-- Strong foundation in Go, Python, PostgreSQL, Redis, and Distributed Systems.
-- Bonus: Experience with Docker, Kubernetes, GraphQL, or Terraform.`,
-    baseScores: { keywords: 72, skills: 84, experience: 82 },
-    missingSkills: ['Docker', 'Kubernetes', 'GraphQL', 'Observability'],
-    matchedSkills: ['Go', 'Python', 'PostgreSQL', 'Redis', 'Distributed Systems'],
-    appliedChanges: [
-      {
-        id: 'st-1',
-        markId: 'm1',
-        bulletKey: 'core_1',
-        section: 'CoreMetric Systems',
-        rationale: 'Aligned your Go & PostgreSQL webhook work with Stripe’s idempotency and API reliability language.',
-        original: 'Built backend APIs in Go and PostgreSQL for usage metering and webhook delivery.',
-        modified: 'Engineered fault-tolerant Go and PostgreSQL REST APIs for usage metering and idempotent webhook delivery across 95K+ daily events.',
-        boost: { keywords: 5, skills: 2, experience: 3 },
-      },
-      {
-        id: 'st-2',
-        markId: 'm2',
-        bulletKey: 'core_2',
-        section: 'CoreMetric Systems',
-        rationale: 'Surfaced database indexing and testing rigor directly highlighted in the role.',
-        original: 'Improved dashboard query performance for enterprise accounts and added automated unit tests.',
-        modified: 'Cut p95 enterprise dashboard query latency by 38% via composite PostgreSQL indexes and authored 70+ automated unit and integration tests.',
-        boost: { keywords: 4, skills: 3, experience: 4 },
-      },
-      {
-        id: 'st-3',
-        markId: 'm3',
-        bulletKey: 'mesh_1',
-        section: 'MeshKV Project',
-        rationale: 'Clarified distributed consensus terminology to reinforce your Distributed Systems fit.',
-        original: 'Implemented leader election and log replication across multi-node local clusters.',
-        modified: 'Implemented Raft leader election, log replication, and fault-injection tests across 5-node distributed clusters in Go and gRPC.',
-        boost: { keywords: 3, skills: 2, experience: 2 },
-      },
-    ],
-    suggestions: [
-      {
-        id: 'sug-st-1',
-        markId: 's1',
-        target: 'mesh_extra',
-        title: 'Add latency & observability metrics to MeshKV if you measured them.',
-        detail: 'Stripe values observability. Only add this if you actually captured throughput or tail latency numbers.',
-        bulletText: 'Instrumented structured request tracing and p99 RPC latency histograms across cluster nodes.',
-        boost: { keywords: 4, skills: 2, experience: 2 },
-      },
-      {
-        id: 'sug-st-2',
-        markId: 's2',
-        target: 'res_extra',
-        title: 'Mention any CI/CD or containerized test workflow you built.',
-        detail: 'Not changed in your resume automatically — apply only if accurate.',
-        bulletText: 'Standardized local multi-service integration suites to catch schema regressions before merge.',
-        boost: { keywords: 3, skills: 2, experience: 1 },
-      },
-    ],
+  "stripe": {
+    "id": "stripe",
+    "label": "Stripe — SWE Intern",
+    "subtitle": "Core Payments Infrastructure",
+    "company": "Stripe",
+    "position": "Software Engineering Intern",
+    "notes": "One page only. Emphasize distributed systems, PostgreSQL latency, and API reliability.",
+    "intensity": "Balanced",
+    "jd": "Stripe — Software Engineering Intern, Core Payments Infrastructure\n\nDesign, build, and scale fault-tolerant distributed APIs processing millions of financial requests with sub-100ms latency and strict reliability guarantees.\n\nResponsibilities:\n- Build resilient backend services in Go or Python with strong Observability and Testing.\n- Optimize PostgreSQL queries, indexing strategies, and asynchronous webhook pipelines.\n- Collaborate across REST APIs, Distributed Systems, and developer tooling teams.\n\nQualifications:\n- Strong foundation in Go, Python, PostgreSQL, Redis, and Distributed Systems.\n- Bonus: Experience with Docker, Kubernetes, GraphQL, or Terraform."
   },
-
-  anthropic: {
-    id: 'anthropic',
-    label: 'Anthropic — Research Intern',
-    subtitle: 'Alignment & Evaluation',
-    company: 'Anthropic',
-    position: 'ML Research Engineering Intern',
-    fileName: 'Alex_Rivera_Master_Resume.pdf',
-    notes: 'One page only. Lead with research, reproducible evaluation harnesses, and Python.',
-    intensity: 'Balanced',
-    jd: `Anthropic — ML Research Engineering Intern, Alignment & Evaluation
-
-Partner with researchers to build scalable Evaluation harnesses, reliable Python experimentation pipelines, and Reinforcement learning tooling for frontier LLMs.
-
-Responsibilities:
-- Design deterministic, fault-tolerant evaluation suites in Python and PyTorch.
-- Run reproducible large-scale experiments and analyze model behavior across edge cases.
-- Collaborate closely with scientists on RLHF, Evaluation, and Linux cluster reliability.
-
-Qualifications:
-- Strong engineering foundation in Python, Reinforcement learning, Evaluation, and Linux.
-- Bonus: Experience with PyTorch, CUDA, MLOps, or Docker.`,
-    baseScores: { keywords: 70, skills: 82, experience: 85 },
-    missingSkills: ['PyTorch', 'MLOps', 'Docker', 'RLHF'],
-    matchedSkills: ['Python', 'Reinforcement learning', 'Evaluation', 'Linux', 'Git'],
-    appliedChanges: [
-      {
-        id: 'an-1',
-        markId: 'm1',
-        bulletKey: 'ml_1',
-        section: 'Autonomous Systems Lab',
-        rationale: 'Highlighted measurable recovery reward and failure-mode rigor to mirror Alignment & Evaluation needs.',
-        original: 'Trained PPO agents under simulated actuator failures for bipedal locomotion recovery.',
-        modified: 'Trained PPO reinforcement learning agents under simulated actuator failures; improved recovery reward by 18% across out-of-distribution stress scenarios.',
-        boost: { keywords: 5, skills: 3, experience: 4 },
-      },
-      {
-        id: 'an-2',
-        markId: 'm2',
-        bulletKey: 'ml_2',
-        section: 'Autonomous Systems Lab',
-        rationale: 'Reframed benchmarking scripts as deterministic evaluation harnesses matching Anthropic’s core workflow.',
-        original: 'Built evaluation pipelines in Python to benchmark reward stability across 40+ environment seeds.',
-        modified: 'Architected reproducible Python evaluation harnesses benchmarking policy stability and failure modes across 40+ deterministic seeds.',
-        boost: { keywords: 5, skills: 3, experience: 3 },
-      },
-      {
-        id: 'an-3',
-        markId: 'm3',
-        bulletKey: 'mesh_1',
-        section: 'MeshKV Project',
-        rationale: 'Connected distributed reliability work to scalable ML experimentation infrastructure.',
-        original: 'Implemented leader election and log replication across multi-node local clusters.',
-        modified: 'Implemented fault-tolerant leader election and replicated state logs across multi-node clusters with deterministic chaos testing.',
-        boost: { keywords: 2, skills: 2, experience: 2 },
-      },
-    ],
-    suggestions: [
-      {
-        id: 'sug-an-1',
-        markId: 's1',
-        target: 'ml_extra',
-        title: 'Mention technical write-ups or lab notes if you shared findings.',
-        detail: 'Research engineering teams prize crisp written analysis alongside strong systems code.',
-        bulletText: 'Authored weekly ablation reports documenting reward-shaping trade-offs and reproducibility checks for 6 lab members.',
-        boost: { keywords: 3, skills: 2, experience: 3 },
-      },
-      {
-        id: 'sug-an-2',
-        markId: 's2',
-        target: 'mesh_extra',
-        title: 'Add a Docker or MLOps workflow bullet if you packaged experiments.',
-        detail: 'Not changed in your resume automatically — only include if true.',
-        bulletText: 'Containerized experiment dependencies to guarantee bit-for-bit reproducible training runs across Linux hosts.',
-        boost: { keywords: 4, skills: 3, experience: 1 },
-      },
-    ],
+  "anthropic": {
+    "id": "anthropic",
+    "label": "Anthropic — Research Intern",
+    "subtitle": "Alignment & Evaluation",
+    "company": "Anthropic",
+    "position": "ML Research Engineering Intern",
+    "notes": "One page only. Lead with research, reproducible evaluation harnesses, and Python.",
+    "intensity": "Balanced",
+    "jd": "Anthropic — ML Research Engineering Intern, Alignment & Evaluation\n\nPartner with researchers to build scalable Evaluation harnesses, reliable Python experimentation pipelines, and Reinforcement learning tooling for frontier LLMs.\n\nResponsibilities:\n- Design deterministic, fault-tolerant evaluation suites in Python and PyTorch.\n- Run reproducible large-scale experiments and analyze model behavior across edge cases.\n- Collaborate closely with scientists on RLHF, Evaluation, and Linux cluster reliability.\n\nQualifications:\n- Strong engineering foundation in Python, Reinforcement learning, Evaluation, and Linux.\n- Bonus: Experience with PyTorch, CUDA, MLOps, or Docker."
   },
-
-  vercel: {
-    id: 'vercel',
-    label: 'Vercel — Frontend Engineer',
-    subtitle: 'Design Systems & DX',
-    company: 'Vercel',
-    position: 'Frontend Engineer Intern',
-    fileName: 'Alex_Rivera_Master_Resume.pdf',
-    notes: 'Highlight React, TypeScript, Tailwind CSS, Accessibility, and crisp interface craft.',
-    intensity: 'Balanced',
-    jd: `Vercel — Frontend Engineer Intern, Design Systems & DX
-
-Craft ultra-fast, accessible web interfaces and developer tools powering Next.js and Vercel's dashboard.
-
-Responsibilities:
-- Build reusable React, TypeScript, and Tailwind CSS primitives with zero layout shift.
-- Optimize perceived latency, keyboard Accessibility, and clean Design Systems architecture.
-- Partner closely across frontend and backend teams to ship thoughtful DX improvements.
-
-Qualifications:
-- Strong fluency in React, TypeScript, Tailwind CSS, and Node.js.
-- Bonus: Experience with Next.js, Design Systems, Accessibility, or Edge Computing.`,
-    baseScores: { keywords: 71, skills: 83, experience: 79 },
-    missingSkills: ['Next.js', 'Design Systems', 'Accessibility', 'Edge Computing'],
-    matchedSkills: ['React', 'TypeScript', 'Tailwind CSS', 'Node.js', 'Git'],
-    appliedChanges: [
-      {
-        id: 'vc-1',
-        markId: 'm1',
-        bulletKey: 'res_1',
-        section: 'ResuFlow Project',
-        rationale: 'Spotlighted React, TypeScript, and Tailwind CSS craft to directly mirror Vercel’s frontend stack.',
-        original: 'Built a responsive resume workflow app with clean live editing and export tools.',
-        modified: 'Engineered a responsive React, TypeScript, and Tailwind CSS workflow editor with live state synchronization, zero layout shift, and instant client-side export.',
-        boost: { keywords: 6, skills: 4, experience: 4 },
-      },
-      {
-        id: 'vc-2',
-        markId: 'm2',
-        bulletKey: 'core_2',
-        section: 'CoreMetric Systems',
-        rationale: 'Connected database query optimization directly to faster dashboard time-to-interactive.',
-        original: 'Improved dashboard query performance for enterprise accounts and added automated unit tests.',
-        modified: 'Reduced enterprise dashboard time-to-interactive by 38% via optimized query paths and shipped 70+ automated regression tests.',
-        boost: { keywords: 4, skills: 2, experience: 3 },
-      },
-    ],
-    suggestions: [
-      {
-        id: 'sug-vc-1',
-        markId: 's1',
-        target: 'res_extra',
-        title: 'Call out keyboard navigation and WCAG contrast work in ResuFlow.',
-        detail: 'Accessibility is central to Design Systems roles. Only apply if you implemented it.',
-        bulletText: 'Implemented full keyboard navigation, ARIA tab/dialog semantics, and reduced-motion safeguards across all interactive views.',
-        boost: { keywords: 5, skills: 3, experience: 2 },
-      },
-      {
-        id: 'sug-vc-2',
-        markId: 's2',
-        target: 'mesh_extra',
-        title: 'Quantify ResuFlow performance or interaction latency.',
-        detail: 'Only you know the real numbers — add a measured metric if you profiled it.',
-        bulletText: 'Maintained sub-100ms interaction latency and zero external bloat across desktop and ultrawide viewports.',
-        boost: { keywords: 3, skills: 2, experience: 2 },
-      },
-    ],
-  },
+  "vercel": {
+    "id": "vercel",
+    "label": "Vercel — Frontend Engineer",
+    "subtitle": "Design Systems & DX",
+    "company": "Vercel",
+    "position": "Frontend Engineer Intern",
+    "notes": "Highlight React, TypeScript, Tailwind CSS, Accessibility, and crisp interface craft.",
+    "intensity": "Balanced",
+    "jd": "Vercel — Frontend Engineer Intern, Design Systems & DX\n\nCraft ultra-fast, accessible web interfaces and developer tools powering Next.js and Vercel's dashboard.\n\nResponsibilities:\n- Build reusable React, TypeScript, and Tailwind CSS primitives with zero layout shift.\n- Optimize perceived latency, keyboard Accessibility, and clean Design Systems architecture.\n- Partner closely across frontend and backend teams to ship thoughtful DX improvements.\n\nQualifications:\n- Strong fluency in React, TypeScript, Tailwind CSS, and Node.js.\n- Bonus: Experience with Next.js, Design Systems, Accessibility, or Edge Computing."
+  }
 };
-
-const INITIAL_SAVED_APPS = [
-  {
-    id: 'saved-linear-1',
-    company: 'Linear',
-    position: 'Product Engineer Intern',
-    status: 'Interviewing',
-    score: 88,
-    savedAt: 'Nov 21, 2026',
-    presetId: 'vercel',
-    revertedIds: [],
-    appliedSuggestionIds: ['sug-vc-1'],
-    tappedSkills: ['Design Systems', 'Accessibility'],
-    selectedDocs: { resume: true, coverLetter: true, recLetter: false },
-  },
-  {
-    id: 'saved-acme-2',
-    company: 'Acme Robotics',
-    position: 'ML Engineering Intern',
-    status: 'Applied',
-    score: 84,
-    savedAt: 'Nov 18, 2026',
-    presetId: 'anthropic',
-    revertedIds: [],
-    appliedSuggestionIds: [],
-    tappedSkills: ['PyTorch'],
-    selectedDocs: { resume: true, coverLetter: true, recLetter: true },
-  },
-];
 
 const STATUS_OPTIONS = ['Draft', 'Applied', 'Interviewing', 'Offer'];
 const STARTER_CHIPS = ['One page only', 'Lead with research', 'Quantify impact', 'Emphasize systems'];
@@ -762,195 +465,6 @@ function escapeTex(str) {
     .replace(/%/g, '\\%')
     .replace(/&/g, '\\&')
     .replace(/_/g, '\\_');
-}
-
-function buildTailoredResume(preset, revertedIds, appliedSuggestionIds, tappedSkills) {
-  const resolve = (bulletKey, fallback) => {
-    const chg = preset.appliedChanges.find((c) => c.bulletKey === bulletKey);
-    if (!chg) return { text: fallback, isNew: false, markId: null };
-    const reverted = revertedIds.includes(chg.id);
-    return {
-      text: reverted ? chg.original : chg.modified,
-      isNew: !reverted,
-      markId: !reverted ? chg.markId : null,
-    };
-  };
-
-  const mlBullets = [
-    resolve('ml_1', 'Trained PPO agents under simulated actuator failures for bipedal locomotion recovery.'),
-    resolve('ml_2', 'Built evaluation pipelines in Python to benchmark reward stability across 40+ environment seeds.'),
-  ];
-
-  const coreBullets = [
-    resolve('core_1', 'Built backend APIs in Go and PostgreSQL for usage metering and webhook delivery.'),
-    resolve('core_2', 'Improved dashboard query performance for enterprise accounts and added automated unit tests.'),
-  ];
-
-  const resBullets = [
-    resolve('res_1', 'Built a responsive resume workflow app with clean live editing and export tools.'),
-  ];
-
-  const meshBullets = [
-    resolve('mesh_1', 'Implemented leader election and log replication across multi-node local clusters.'),
-  ];
-
-  preset.suggestions.forEach((sug) => {
-    if (appliedSuggestionIds.includes(sug.id)) {
-      const item = { text: sug.bulletText, isNew: true, markId: sug.markId };
-      if (sug.target === 'ml_extra') mlBullets.push(item);
-      if (sug.target === 'res_extra') resBullets.push(item);
-      if (sug.target === 'mesh_extra') meshBullets.push(item);
-    }
-  });
-
-  const baseSkills = [
-    'Python', 'Go', 'TypeScript', 'C++', 'SQL',
-    'React', 'Node.js', 'PostgreSQL', 'Redis', 'gRPC',
-    'Reinforcement learning', 'Git', 'Linux',
-  ];
-
-  const addedSkills = tappedSkills.filter((s) => !baseSkills.includes(s));
-
-  return {
-    name: 'Alex Rivera',
-    contact: 'alex.rivera@university.edu · Lubbock, TX · github.com/arivera',
-    mlBullets,
-    coreBullets,
-    resBullets,
-    meshBullets,
-    baseSkills,
-    addedSkills,
-  };
-}
-
-function buildOverleafLatex(model, company, position, intensity) {
-  const renderList = (bullets) =>
-    bullets.map((b) => `  \\item ${escapeTex(b.text)}`).join('\n');
-
-  const allSkills = [...model.baseSkills, ...model.addedSkills];
-
-  return `% Overleaf-compatible resume tailored by ResuMeow (Mock data)
-% Target: ${company || 'Target Company'} — ${position || 'Target Role'} (${intensity} intensity)
-\\documentclass[10.5pt,letterpaper]{article}
-\\usepackage[margin=0.65in]{geometry}
-\\usepackage{enumitem,hyperref}
-\\pagestyle{empty}
-
-\\begin{document}
-\\section*{${escapeTex(model.name)}}
-alex.rivera@university.edu $\\cdot$ Lubbock, TX $\\cdot$ github.com/arivera
-
-\\subsection*{Education}
-\\textbf{Texas Tech University} \\hfill Expected May 2027 \\\\
-B.S. in Computer Science (GPA: 3.91 / 4.00)
-
-\\subsection*{Experience \\& Research}
-\\textbf{Undergraduate ML Research Assistant — Autonomous Systems Lab} \\hfill Jan 2025 -- Present
-\\begin{itemize}[leftmargin=1.2em,noitemsep]
-${renderList(model.mlBullets)}
-\\end{itemize}
-
-\\textbf{Software Engineering Intern — CoreMetric Systems} \\hfill May 2025 -- Aug 2025
-\\begin{itemize}[leftmargin=1.2em,noitemsep]
-${renderList(model.coreBullets)}
-\\end{itemize}
-
-\\subsection*{Projects}
-\\textbf{ResuFlow — Interactive Career Workspace} \\hfill React, TypeScript, Tailwind CSS
-\\begin{itemize}[leftmargin=1.2em,noitemsep]
-${renderList(model.resBullets)}
-\\end{itemize}
-
-\\textbf{MeshKV — Fault-Tolerant Key-Value Store} \\hfill Go, gRPC, Redis
-\\begin{itemize}[leftmargin=1.2em,noitemsep]
-${renderList(model.meshBullets)}
-\\end{itemize}
-
-\\subsection*{Skills}
-${escapeTex(allSkills.join(', '))}
-\\end{document}`;
-}
-
-function buildCoverLetter(tone, company, position, tappedSkills) {
-  const c = company.trim() || 'Acme Robotics';
-  const p = position.trim() || 'ML Engineering Intern';
-  const skillNote =
-    tappedSkills.length > 0
-      ? ` I also bring hands-on familiarity with ${tappedSkills.join(', ')}.`
-      : '';
-
-  if (tone === 'Enthusiastic') {
-    return `Hi ${c} Team,
-
-I would love to join ${c} as a ${p}! As a Computer Science student who enjoys working at the intersection of dependable systems and thoughtful engineering, I have admired ${c}’s craft and would be thrilled to contribute this upcoming term.
-
-In my research at the Autonomous Systems Lab, I trained PPO reinforcement learning agents under actuator-failure conditions and built reproducible Python evaluation pipelines across 40+ seeds. During my internship at CoreMetric Systems, I shipped Go and PostgreSQL backend APIs, cut p95 enterprise dashboard query latency by 38%, and authored 70+ automated tests.${skillNote}
-
-I care deeply about clear communication, measurable outcomes, and leaving every codebase calmer than I found it. Thank you for considering my application — I would be excited to speak with your team!
-
-Warmly,
-Alex Rivera
-alex.rivera@university.edu · github.com/arivera`;
-  }
-
-  if (tone === 'Formal') {
-    return `Dear ${c} Hiring Committee,
-
-I am writing to apply for the ${p} position at ${c}. Currently pursuing a B.S. in Computer Science at Texas Tech University (GPA: 3.91/4.00), I have focused my academic research and industry experience on reliable software infrastructure, empirical evaluation, and full-stack engineering.
-
-At CoreMetric Systems, I engineered Go and PostgreSQL APIs for usage metering and webhook delivery while reducing p95 dashboard query latency by 38% and expanding automated test coverage. In parallel, my work as an Undergraduate ML Research Assistant in the Autonomous Systems Lab strengthened my background in reinforcement learning, deterministic evaluation harnesses, and experimental rigor.${skillNote}
-
-I would welcome the opportunity to discuss how my skills align with ${c}’s goals. Thank you for your time and consideration.
-
-Sincerely,
-Alex Rivera
-alex.rivera@university.edu`;
-  }
-
-  return `Dear ${c} Team,
-
-I am applying for the ${p} role. I am a Computer Science student (3.91 GPA) with practical experience in reliable systems, machine learning evaluation, and modern web engineering.
-
-Relevant highlights for ${c}:
-• Autonomous Systems Lab: Trained PPO agents under actuator failures and built reproducible Python evaluation harnesses across 40+ seeds.
-• CoreMetric Systems (SWE Intern): Built Go & PostgreSQL webhook/metering APIs, cut p95 dashboard latency by 38%, and added 70+ automated tests.
-• Projects: Built ResuFlow (React, TypeScript, Tailwind CSS) and MeshKV (Go, gRPC, Redis).${skillNote}
-
-Thank you for your time — I would love to connect.
-
-Best,
-Alex Rivera
-alex.rivera@university.edu`;
-}
-
-function buildRecommendationDraft({ name, relationship, deadline, company, position }) {
-  const c = company.trim() || 'Acme Robotics';
-  const p = position.trim() || 'ML Engineering Intern';
-  const who = name.trim() || 'Dr. Morales';
-  const rel = relationship.trim() || 'Research Advisor';
-  const due = deadline.trim() || 'December 15, 2026';
-
-  const subject = `Recommendation letter request — Alex Rivera (${c}, ${p})`;
-  const body = `Dear ${who},
-
-I hope you are having a calm and productive week. I am reaching out to ask if you would feel comfortable writing a brief letter of recommendation for my application to the ${p} position at ${c}.
-
-Because the team values rigorous engineering and clear problem-solving, your perspective as my ${rel} would mean a great deal to my application.
-
-To save you time, I have attached my tailored resume and summarized a few highlights you are welcome to draw from:
-• Autonomous Systems Lab: PPO failure-recovery experiments and reproducible Python evaluation pipelines across 40+ seeds
-• CoreMetric Systems Internship: Go/PostgreSQL API engineering, 38% p95 query latency reduction, and 70+ automated tests
-• Projects: ResuFlow (React/TypeScript) and MeshKV (Go/gRPC)
-
-The portal deadline is ${due}, and they will send a direct submission link once I list your email. Please feel free to decline if your calendar is full this month — I completely understand.
-
-Thank you so much for your mentorship and support.
-
-Best regards,
-Alex Rivera
-alex.rivera@university.edu`;
-
-  return { subject, body };
 }
 
 // ============================================================================
@@ -1084,211 +598,12 @@ const YarnLoader = () => (
   </div>
 );
 
-const ResumePreviewDocument = ({
-  tailoredModel,
-  manualLatex,
-  flashMarkId,
-  onResetLatex,
-  compactWidth = false,
-}) => {
-  // If user typed custom LaTeX directly, render live parsed preview
-  if (manualLatex !== null) {
-    const parsed = parseCustomLatexToBlocks(manualLatex);
-    return (
-      <article className={`${compactWidth ? 'max-w-none' : 'max-w-[760px]'} py-1`}>
-        <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2.5 text-[13px] text-[var(--mute)]">
-          <span>Live preview synced from your custom LaTeX edits</span>
-          <button
-            type="button"
-            onClick={onResetLatex}
-            className="text-[var(--lav)] hover:underline underline-offset-4 cursor-pointer"
-          >
-            Reset LaTeX
-          </button>
-        </div>
-
-        <h3 className="text-[24px] font-bold tracking-[-0.02em] leading-tight">{parsed.name}</h3>
-        {parsed.contact && <p className="mt-1 text-[14px] text-[var(--mute)]">{parsed.contact}</p>}
-
-        {parsed.sections.map((sec, idx) => (
-          <div key={idx} className="mt-5 border-t border-[var(--line)] pt-3.5">
-            <h4 className="mb-2.5 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--mute)]">
-              {sec.title}
-            </h4>
-            <div className="space-y-1.5 text-[15px] leading-[1.6]">
-              {sec.items.map((item, i) => {
-                if (item.type === 'heading') {
-                  return (
-                    <div key={i} className="mt-2.5 flex flex-wrap items-baseline justify-between gap-2 first:mt-0">
-                      <strong className="font-bold">{item.left}</strong>
-                      <span className="text-[13.5px] text-[var(--mute)]">{item.right}</span>
-                    </div>
-                  );
-                }
-                if (item.type === 'bullet') {
-                  return (
-                    <div key={i} className="flex gap-2.5 pl-1">
-                      <span className="text-[var(--mute)]">•</span>
-                      <span>{item.text}</span>
-                    </div>
-                  );
-                }
-                return (
-                  <p key={i} className="m-0">
-                    {item.text}
-                  </p>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </article>
-    );
-  }
-
-  return (
-    <article className={`${compactWidth ? 'max-w-none' : 'max-w-[760px]'} py-1`}>
-      <h3 className="text-[24px] font-bold tracking-[-0.02em] leading-tight">{tailoredModel.name}</h3>
-      <p className="mt-1 text-[14px] text-[var(--mute)]">{tailoredModel.contact}</p>
-
-      {/* Education */}
-      <div className="mt-5 border-t border-[var(--line)] pt-3.5">
-        <h4 className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--mute)]">
-          Education
-        </h4>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <strong className="font-bold">Texas Tech University</strong>
-          <span className="text-[13.5px] text-[var(--mute)]">Expected May 2027</span>
-        </div>
-        <p className="mt-0.5 text-[15px]">B.S. in Computer Science · GPA: 3.91 / 4.00</p>
-      </div>
-
-      {/* Experience & Research */}
-      <div className="mt-5 border-t border-[var(--line)] pt-3.5">
-        <h4 className="mb-2.5 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--mute)]">
-          Experience & Research
-        </h4>
-
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <strong className="font-bold">Undergraduate ML Research Assistant — Autonomous Systems Lab</strong>
-          <span className="text-[13.5px] text-[var(--mute)]">Jan 2025 – Present</span>
-        </div>
-        <ul className="mt-1.5 mb-4 list-disc space-y-1.5 pl-5 text-[15px] leading-[1.6]">
-          {tailoredModel.mlBullets.map((b, i) => (
-            <li key={i}>
-              {b.isNew ? (
-                <mark
-                  id={b.markId || undefined}
-                  className={`rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)] transition-colors ${
-                    flashMarkId === b.markId ? 'rm-flash' : ''
-                  }`}
-                >
-                  {b.text}
-                </mark>
-              ) : (
-                b.text
-              )}
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <strong className="font-bold">Software Engineering Intern — CoreMetric Systems</strong>
-          <span className="text-[13.5px] text-[var(--mute)]">May 2025 – Aug 2025</span>
-        </div>
-        <ul className="mt-1.5 list-disc space-y-1.5 pl-5 text-[15px] leading-[1.6]">
-          {tailoredModel.coreBullets.map((b, i) => (
-            <li key={i}>
-              {b.isNew ? (
-                <mark
-                  id={b.markId || undefined}
-                  className={`rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)] transition-colors ${
-                    flashMarkId === b.markId ? 'rm-flash' : ''
-                  }`}
-                >
-                  {b.text}
-                </mark>
-              ) : (
-                b.text
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Projects */}
-      <div className="mt-5 border-t border-[var(--line)] pt-3.5">
-        <h4 className="mb-2.5 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--mute)]">
-          Projects
-        </h4>
-
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <strong className="font-bold">ResuFlow — Interactive Career Workspace</strong>
-          <span className="text-[13.5px] text-[var(--mute)]">React, TypeScript, Tailwind CSS</span>
-        </div>
-        <ul className="mt-1.5 mb-4 list-disc space-y-1.5 pl-5 text-[15px] leading-[1.6]">
-          {tailoredModel.resBullets.map((b, i) => (
-            <li key={i}>
-              {b.isNew ? (
-                <mark
-                  id={b.markId || undefined}
-                  className={`rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)] transition-colors ${
-                    flashMarkId === b.markId ? 'rm-flash' : ''
-                  }`}
-                >
-                  {b.text}
-                </mark>
-              ) : (
-                b.text
-              )}
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <strong className="font-bold">MeshKV — Fault-Tolerant Key-Value Store</strong>
-          <span className="text-[13.5px] text-[var(--mute)]">Go, gRPC, Redis</span>
-        </div>
-        <ul className="mt-1.5 list-disc space-y-1.5 pl-5 text-[15px] leading-[1.6]">
-          {tailoredModel.meshBullets.map((b, i) => (
-            <li key={i}>
-              {b.isNew ? (
-                <mark
-                  id={b.markId || undefined}
-                  className={`rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)] transition-colors ${
-                    flashMarkId === b.markId ? 'rm-flash' : ''
-                  }`}
-                >
-                  {b.text}
-                </mark>
-              ) : (
-                b.text
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Skills */}
-      <div className="mt-5 border-t border-[var(--line)] pt-3.5">
-        <h4 className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--mute)]">
-          Skills
-        </h4>
-        <p className="text-[15px] leading-[1.7]">
-          {tailoredModel.baseSkills.join(', ')}
-          {tailoredModel.addedSkills.length > 0 && (
-            <>
-              {', '}
-              <mark className="rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)]">
-                {tailoredModel.addedSkills.join(', ')}
-              </mark>
-            </>
-          )}
-        </p>
-      </div>
-    </article>
-  );
-};
+const ResumePreviewDocument = ({ tailoredModel, manualLatex, flashMarkId, onResetLatex, compactWidth = false }) => (
+  <article className={`${compactWidth ? 'max-w-none' : 'max-w-[760px]'} py-1`}>
+    {manualLatex !== null && <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2.5 text-[13px] text-[var(--mute)]"><span>Approximate text preview of custom LaTeX; compile in Overleaf to verify.</span><button type="button" onClick={onResetLatex} className="text-[var(--lav)] hover:underline">Reset LaTeX</button></div>}
+    <div className="whitespace-pre-wrap break-words text-[15px] leading-[1.65]">{manualLatex !== null ? latexReadingView(manualLatex) : tailoredModel.segments.map((part,i)=>part.markId?<mark key={i} id={part.markId} className={`rounded-[3px] bg-[var(--mint)] px-0.5 text-[var(--mint-ink)] ${flashMarkId===part.markId?'rm-flash':''}`}>{part.text}</mark>:<React.Fragment key={i}>{part.text}</React.Fragment>)}</div>
+  </article>
+);
 
 const ScoreAndSkillsSummary = ({
   displayScore,
@@ -1302,10 +617,10 @@ const ScoreAndSkillsSummary = ({
     {/* Score + Weighted Bars */}
     <div>
       <div className="flex items-baseline gap-1">
-        <span className="text-[44px] font-medium leading-none tracking-[-0.03em]">{displayScore}</span>
+        <span className="text-[44px] font-medium leading-none tracking-[-0.03em]">{displayScore ?? '—'}</span>
         <span className="text-[16px] text-[var(--mute)]">/100</span>
       </div>
-      <p className="mt-1 text-[13.5px] text-[var(--mute)]">Job match (mock)</p>
+      <p className="mt-1 text-[13.5px] text-[var(--mute)]">Original resume match (AI estimate)</p>
       <p className="mt-1 text-[14px] font-bold text-[var(--lav)]">{liveScores.verdict}</p>
 
       <dl className="mt-3 grid max-w-[280px] gap-1.5 text-[13px]">
@@ -1320,23 +635,23 @@ const ScoreAndSkillsSummary = ({
               <div className="relative h-1 overflow-hidden rounded-full bg-[var(--line)]">
                 <div
                   className="absolute inset-y-0 left-0 rounded-full bg-[var(--lav)] transition-all duration-500"
-                  style={{ width: `${row.val}%` }}
+                  style={{ width: `${row.val ?? 0}%` }}
                 />
               </div>
-              <b className="text-right font-medium">{row.val}</b>
+              <b className="text-right font-medium">{row.val ?? 'N/A'}</b>
             </dd>
           </div>
         ))}
       </dl>
       <p className="mt-2 text-[12.5px] text-[var(--mute)]">
-        Weighted: keywords 40%, skills 30%, experience 30%.
+        Weighted: keywords 40%, skills 30%, experience 30%. Empty categories are excluded.
       </p>
     </div>
 
     {/* Missing & Matched Skills */}
     <div className={stacked ? 'border-t border-[var(--line)] pt-5' : ''}>
       <p className="mb-2.5 text-[13.5px] text-[var(--mute)]">
-        Missing from your resume. Tap any you actually have.
+        Missing evidence. Tap to flag for review; flags do not change your resume or score.
       </p>
       <div className="flex flex-wrap gap-1.5">
         {activePreset.missingSkills.map((skill) => {
@@ -1353,7 +668,7 @@ const ScoreAndSkillsSummary = ({
                   : 'bg-[var(--peach)] text-[var(--peach-ink)] hover:brightness-95'
               }`}
             >
-              {added ? `✓ ${skill}` : `+ ${skill}`}
+              {added ? `Flagged: ${skill}` : `+ ${skill}`}
             </button>
           );
         })}
@@ -1443,7 +758,7 @@ const ChangesInspectorList = ({
     <div>
       <h3 className="text-[16px] font-bold tracking-[-0.01em]">Additional suggestions</h3>
       <p className="mt-0.5 mb-2 text-[13.5px] text-[var(--mute)]">
-        Not changed in your resume — your call. Apply only what accurately reflects your experience.
+        Not changed in your resume. Flag suggestions for review; add only verified facts to your master resume.
       </p>
 
       <div className="divide-y divide-[var(--line)] border-t border-[var(--line)]">
@@ -1459,7 +774,7 @@ const ChangesInspectorList = ({
                       : 'bg-[var(--peach)] text-[var(--peach-ink)]'
                   }`}
                 >
-                  {isApplied ? 'Applied' : 'Suggested'}
+                  {isApplied ? 'Flagged' : 'Suggested'}
                 </span>
                 <strong className="font-semibold">{sug.title}</strong>
               </div>
@@ -1476,17 +791,8 @@ const ChangesInspectorList = ({
                       : 'border-[var(--line)] text-[var(--ink)] hover:bg-[var(--lav-s)]'
                   }`}
                 >
-                  {isApplied ? 'Applied ✓' : '+ Apply'}
+                  {isApplied ? 'Flagged ✓' : '+ Flag for review'}
                 </button>
-                {isApplied && (
-                  <button
-                    type="button"
-                    onClick={() => onJumpToMark(sug.markId)}
-                    className="cursor-pointer text-[13px] text-[var(--lav)] hover:underline underline-offset-4"
-                  >
-                    Highlight in preview
-                  </button>
-                )}
               </div>
             </div>
           );
@@ -1562,7 +868,7 @@ const SavedDrawer = ({ open, onClose, apps, onLoad, onStatusChange, onDelete }) 
                     <div className="text-[13.5px] text-[var(--mute)]">{app.position}</div>
                   </div>
                   <span className="rounded-full bg-[var(--mint)] px-2.5 py-0.5 text-[12.5px] font-medium text-[var(--mint-ink)]">
-                    {app.score}/100
+                    {app.score ?? '—'}/100
                   </span>
                 </div>
 
@@ -1614,7 +920,7 @@ const SavedDrawer = ({ open, onClose, apps, onLoad, onStatusChange, onDelete }) 
 // 7. MAIN RESUMEOW APPLICATION
 // ============================================================================
 const THEME_STORAGE_KEY = 'resumeow_theme_v5';
-const SAVED_STORAGE_KEY = 'resumeow_saved_apps_v4';
+const SAVED_STORAGE_KEY = 'resumeow_saved_live_v1';
 
 export default function App() {
   // Theme (Defaults to Dark Mode, persisted)
@@ -1654,12 +960,19 @@ export default function App() {
   const napTimerRef = useRef(null);
 
   // Workspace Inputs
-  const [presetId, setPresetId] = useState('anthropic');
+  const [sampleMode, setSampleMode] = useState(false);
   const [resumeFormat, setResumeFormat] = useState('pdf'); // 'pdf' | 'latex' | 'text'
   const [fileName, setFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);
-  const [latexSource, setLatexSource] = useState(SAMPLE_LATEX_RESUME);
-  const [plainSource, setPlainSource] = useState(SAMPLE_PLAIN_RESUME);
+  const [latexSource, setLatexSource] = useState('');
+  const [plainSource, setPlainSource] = useState('');
+  const [verified, setVerified] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [packageData, setPackageData] = useState(null);
+  const [requestContext, setRequestContext] = useState(null);
+  const [apiStatus, setApiStatus] = useState('Checking backend…');
+  const busyRef = useRef(false);
+  const [letterBusy, setLetterBusy] = useState(false);
 
   const [company, setCompany] = useState('');
   const [position, setPosition] = useState('');
@@ -1693,10 +1006,11 @@ export default function App() {
   const [coverText, setCoverText] = useState('');
 
   // Recommendation Request State
-  const [recName, setRecName] = useState('Dr. Elena Morales');
-  const [recRel, setRecRel] = useState('Research Advisor');
-  const [recDeadline, setRecDeadline] = useState('December 15, 2026');
+  const [recName, setRecName] = useState('');
+  const [recRel, setRecRel] = useState('');
+  const [recDeadline, setRecDeadline] = useState('');
   const [recManualBody, setRecManualBody] = useState(null);
+  const [recDraft, setRecDraft] = useState({subject:'',body:''});
 
   // Copy Button Feedback
   const [copiedFeedback, setCopiedFeedback] = useState('');
@@ -1712,7 +1026,7 @@ export default function App() {
     } catch {
       // ignore
     }
-    return INITIAL_SAVED_APPS;
+    return [];
   });
 
   useEffect(() => {
@@ -1723,7 +1037,8 @@ export default function App() {
     }
   }, [savedApps]);
 
-  const activePreset = DEMO_PRESETS[presetId] || DEMO_PRESETS.anthropic;
+  const activePreset = useMemo(() => displayModel(packageData), [packageData]);
+  useEffect(() => { requestApi('health').then(h=>setApiStatus(h.aiConfigured?'Gemini key configured':'AI setup required · .env.local')).catch(()=>setApiStatus('Backend unavailable')); }, []);
 
   // Close Demos Popover on Outside Click or Escape
   useEffect(() => {
@@ -1845,61 +1160,10 @@ export default function App() {
     return { matched, missing };
   }, [jobDesc, resumeStats]);
 
-  const tailoredModel = useMemo(
-    () => buildTailoredResume(activePreset, revertedIds, appliedSuggestionIds, tappedSkills),
-    [activePreset, revertedIds, appliedSuggestionIds, tappedSkills]
-  );
-
-  const generatedLatex = useMemo(
-    () => buildOverleafLatex(tailoredModel, company, position, intensity),
-    [tailoredModel, company, position, intensity]
-  );
-
+  const tailoredModel = useMemo(() => reviewResume(packageData, revertedIds), [packageData, revertedIds]);
+  const generatedLatex = tailoredModel.latex;
   const effectiveLatex = manualLatex !== null ? manualLatex : generatedLatex;
-
-  const liveScores = useMemo(() => {
-    let kw = activePreset.baseScores.keywords;
-    let sk = activePreset.baseScores.skills;
-    let ex = activePreset.baseScores.experience;
-
-    if (intensity === 'Strong') kw += 2;
-    if (intensity === 'Light') kw -= 2;
-
-    activePreset.appliedChanges.forEach((c) => {
-      if (!revertedIds.includes(c.id)) {
-        kw += c.boost.keywords;
-        sk += c.boost.skills;
-        ex += c.boost.experience;
-      }
-    });
-
-    activePreset.suggestions.forEach((s) => {
-      if (appliedSuggestionIds.includes(s.id)) {
-        kw += s.boost.keywords;
-        sk += s.boost.skills;
-        ex += s.boost.experience;
-      }
-    });
-
-    tappedSkills.forEach(() => {
-      kw += 3;
-      sk += 2;
-    });
-
-    kw = Math.min(99, Math.max(40, kw));
-    sk = Math.min(99, Math.max(40, sk));
-    ex = Math.min(99, Math.max(40, ex));
-
-    const total = Math.round(kw * 0.4 + sk * 0.3 + ex * 0.3);
-    const verdict =
-      total >= 88
-        ? 'A purr-fect match. Your phrasing and skills align tightly.'
-        : total >= 78
-        ? 'Strong fit. Tap any missing skills you genuinely have to close the gap.'
-        : 'Solid foundation. Review applied changes or add genuine skills.';
-
-    return { keywords: kw, skills: sk, experience: ex, total, verdict };
-  }, [activePreset, intensity, revertedIds, appliedSuggestionIds, tappedSkills]);
+  const liveScores = useMemo(() => scoreModel(packageData), [packageData]);
 
   // Smooth score count-up on Results entry
   useEffect(() => {
@@ -1907,6 +1171,7 @@ export default function App() {
       setHasCounted(false);
       return;
     }
+    if (liveScores.total === null) { setDisplayScore(null); setHasCounted(true); return; }
     if (hasCounted) {
       setDisplayScore(liveScores.total);
       return;
@@ -1937,64 +1202,49 @@ export default function App() {
     return () => clearInterval(iv);
   }, [view, liveScores.total, hasCounted, quietCat]);
 
-  const generatedRec = useMemo(
-    () =>
-      buildRecommendationDraft({
-        name: recName,
-        relationship: recRel,
-        deadline: recDeadline,
-        company,
-        position,
-      }),
-    [recName, recRel, recDeadline, company, position]
-  );
+  const generatedRec = recDraft;
 
   const effectiveRecBody = recManualBody !== null ? recManualBody : generatedRec.body;
 
   // ============================================================================
   // HANDLERS
   // ============================================================================
-  const handleSelectFile = (file) => {
-    if (!file) return;
-    setFileName(file.name);
-    setFormError('');
-    setCat('upload', `Sniffing through ${file.name}…`);
-    setTimeout(() => setCat('idle', 'Got it. Now add the job description.'), 1650);
+  const extractResume = async (format,data) => {
+    const result=await requestApi('extract',{format,data});
+    if(typeof result.text!=='string'||!result.text.trim())throw Error('No resume text found.');
+    setPlainSource(result.text);setVerified(false);setResumeFormat('text');
+    setCat('idle','Check the extracted text and confirm it before generating.');
   };
-
-  const handleLoadPreset = (id) => {
-    const p = DEMO_PRESETS[id];
-    if (!p) return;
-    setPresetId(id);
-    setFileName(p.fileName);
-    setResumeFormat('pdf');
-    setLatexSource(SAMPLE_LATEX_RESUME);
-    setPlainSource(SAMPLE_PLAIN_RESUME);
-    setCompany(p.company);
-    setPosition(p.position);
-    setJobDesc(p.jd);
-    setNotes(p.notes);
-    setIntensity(p.intensity);
-    setSelectedDocs({ resume: true, coverLetter: true, recLetter: true });
-    setFormError('');
-    setDemosOpen(false);
-    setView('workspace');
-    setCat('upload', `Loaded ${p.label}.`);
-    setTimeout(() => setCat('idle', 'Preset ready. Click Generate documents when set.'), 1550);
+  const handleSelectFile = async (file) => {
+    if(!file||busyRef.current)return;
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(!['pdf','tex','txt','md'].includes(ext)||file.size>5*1024*1024){setFormError('Choose a PDF, LaTeX or text file up to 5 MB.');return;}
+    if(['pdf','tex'].includes(ext)&&!window.confirm('Extract this file with Google Gemini? Its contents will be sent to Google.'))return;
+    busyRef.current=true;setIsExtracting(true);setFileName(file.name);setFormError('');
+    setPlainSource('');setLatexSource('');setVerified(false);setSampleMode(false);setCat('upload','Reading your resume…');
+    try{if(ext==='pdf')await extractResume('pdf',await fileToBase64(file));else if(ext==='tex')await extractResume('latex',await file.text());else{setPlainSource(await file.text());setResumeFormat('text');setCat('idle','Review your resume before generating.');}}
+    catch(e){setFileName('');setFormError(e.message);setCat('error','I could not read that file.');}
+    finally{busyRef.current=false;setIsExtracting(false);}
   };
-
-  const handleResetWorkspace = () => {
-    setFileName('');
-    setCompany('');
-    setPosition('');
-    setJobDesc('');
-    setNotes('');
-    setIntensity('Balanced');
-    setSelectedDocs({ resume: true, coverLetter: true, recLetter: false });
-    setFormError('');
-    setDemosOpen(false);
-    setView('workspace');
-    setCat('idle', 'Fresh slate. Drop in your master resume to start.');
+  const handleExtractLatex=async()=>{
+    if(busyRef.current||!latexSource.trim())return;
+    if(!window.confirm('Send this LaTeX source to Google Gemini to extract its visible text?'))return;
+    busyRef.current=true;setIsExtracting(true);setFormError('');setVerified(false);setCat('upload','Reading your LaTeX…');
+    try{await extractResume('latex',latexSource);}catch(e){setFormError(e.message);setCat('error','I could not read that LaTeX.');}
+    finally{busyRef.current=false;setIsExtracting(false);}
+  };
+  const handleLoadPreset=(id)=>{
+    if(busyRef.current)return;const p=DEMO_PRESETS[id];if(!p)return;
+    setSampleMode(true);setFileName('Sample resume');setResumeFormat('text');setLatexSource('');setPlainSource(SAMPLE_PLAIN_RESUME);setVerified(false);
+    setCompany(p.company);setPosition(p.position);setJobDesc(p.jd);setNotes(p.notes);setIntensity(p.intensity);
+    setSelectedDocs({resume:true,coverLetter:true,recLetter:true});setFormError('');setDemosOpen(false);setView('workspace');
+    setCat('idle','Sample inputs loaded. Generation uses the real AI service.');
+  };
+  const handleResetWorkspace=()=>{
+    if(busyRef.current)return;setSampleMode(false);setFileName('');setPlainSource('');setLatexSource('');setVerified(false);setResumeFormat('pdf');
+    setCompany('');setPosition('');setJobDesc('');setNotes('');setIntensity('Balanced');setRecName('');setRecRel('');setRecDeadline('');
+    setSelectedDocs({resume:true,coverLetter:true,recLetter:false});setFormError('');setDemosOpen(false);setView('workspace');setPackageData(null);
+    setCat('idle','Fresh slate. Drop in your master resume to start.');
   };
 
   const handleAddStarterChip = (chip) => {
@@ -2004,85 +1254,33 @@ export default function App() {
     });
   };
 
-  const handleGenerate = () => {
-    if (!jobDesc.trim()) {
-      setFormError('Add a job description so there is something to tailor to.');
-      setCat('error', 'Hmm, I need a job description.');
-      return;
-    }
-
-    const hasResume =
-      (resumeFormat === 'pdf' && Boolean(fileName)) ||
-      (resumeFormat === 'latex' && latexSource.trim().length > 15) ||
-      (resumeFormat === 'text' && plainSource.trim().length > 15);
-
-    if (!hasResume) {
-      setFormError('Add your master resume first — or click “Use sample resume”.');
-      setCat('error', 'Hmm, I need your master resume first.');
-      return;
-    }
-
-    if (!selectedDocs.resume && !selectedDocs.coverLetter && !selectedDocs.recLetter) {
-      setFormError('Select at least one document to generate.');
-      setCat('error', 'Pick at least one document for me to draft.');
-      return;
-    }
-
-    // Infer closest preset from role/JD keywords
-    const text = `${company} ${position} ${jobDesc}`.toLowerCase();
-    let inferred = presetId;
-    if (text.includes('vercel') || text.includes('frontend') || text.includes('next.js')) {
-      inferred = 'vercel';
-    } else if (text.includes('stripe') || text.includes('payments') || text.includes('postgresql')) {
-      inferred = 'stripe';
-    } else if (text.includes('anthropic') || text.includes('pytorch') || text.includes('ml')) {
-      inferred = 'anthropic';
-    }
-    setPresetId(inferred);
-
-    setFormError('');
-    setIsGenerating(true);
-    setCat('generating', 'Typing up your documents…');
-
-    setTimeout(() => {
-      setIsGenerating(false);
-      setRevertedIds([]);
-      setAppliedSuggestionIds([]);
-      setTappedSkills([]);
-      setManualLatex(null);
-      setRecManualBody(null);
-      setSplitStudio(false);
-      setCoverText(buildCoverLetter(coverTone, company, position, []));
-
-      if (selectedDocs.resume) setActiveTab('preview');
-      else if (selectedDocs.coverLetter) setActiveTab('cover');
-      else setActiveTab('rec');
-
-      setView('results');
-      setCat('review', 'Reviewing the draft. Check what changed.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 1750);
+  const handleGenerate=async()=>{
+    if(busyRef.current)return;
+    const fail=message=>{setFormError(message);setCat('error','Hmm, check your inputs.');};
+    if(resumeFormat!=='text')return fail('Extract and review your resume as plain text first.');
+    const resumeText=plainSource.trim();
+    if(!resumeText||!verified)return fail('Add your resume, review its text and confirm accuracy.');
+    if(!jobDesc.trim())return fail('Add a job description first.');
+    const documents=[...(selectedDocs.resume?['resume']:[]),...(selectedDocs.coverLetter?['coverLetter']:[]),...(selectedDocs.recLetter?['recommendation']:[])];
+    if(!documents.length)return fail('Select at least one document.');
+    if(!window.confirm('Send your reviewed resume, job description and instructions to Google Gemini to generate drafts?'))return;
+    const context={resumeText,jobDescription:jobDesc.trim(),company:company.trim(),position:position.trim(),notes,intensity,coverTone,mentor:recName,relationship:recRel,deadline:recDeadline};
+    busyRef.current=true;setIsGenerating(true);setFormError('');setCat('generating','Typing up your documents…');
+    try{
+      const data=mapPackage(await requestApi('generate',{...context,documents}),resumeText,documents);
+      setPackageData(data);setRequestContext(context);setRevertedIds([]);setAppliedSuggestionIds([]);setTappedSkills([]);setManualLatex(null);setRecManualBody(null);setSplitStudio(false);
+      setCoverText(data.documents.coverLetter?.text||'');setRecDraft(splitEmail(data.documents.recommendation?.text,context.company,context.position));
+      setActiveTab(selectedDocs.resume?'preview':selectedDocs.coverLetter?'cover':'rec');setHasCounted(false);setView('results');setCat('review','Review the AI drafts and check every fact.');
+      window.scrollTo({top:0,behavior:'smooth'});
+    }catch(e){fail(e.message);}finally{busyRef.current=false;setIsGenerating(false);}
   };
-
-  // Interactive Results Actions
-  const handleToggleMissingSkill = (skill) => {
-    setManualLatex(null);
-    const exists = tappedSkills.includes(skill);
-    const next = exists ? tappedSkills.filter((s) => s !== skill) : [...tappedSkills, skill];
-    setTappedSkills(next);
-    setCoverText(buildCoverLetter(coverTone, company, position, next));
-    setCat(
-      exists ? 'review' : 'success',
-      exists
-        ? `${skill} returned to missing.`
-        : `${skill} added to your skills & LaTeX. Only keep it if it’s true.`
-    );
-    if (!exists) {
-      setTimeout(() => setCat('review', 'Reviewing the draft.'), 1850);
-    }
+  const handleToggleMissingSkill=skill=>{
+    setTappedSkills(prev=>prev.includes(skill)?prev.filter(s=>s!==skill):[...prev,skill]);
+    setCat('review','Review flag only. Add verified skills to your master resume and regenerate.');
   };
 
   const handleToggleRevert = (chg) => {
+    if(manualLatex!==null&&!window.confirm('Reverting this AI edit will discard custom LaTeX edits. Continue?'))return;
     setManualLatex(null);
     const isReverted = revertedIds.includes(chg.id);
     setRevertedIds((prev) =>
@@ -2094,23 +1292,13 @@ export default function App() {
     );
   };
 
-  const handleToggleSuggestion = (sug) => {
-    setManualLatex(null);
-    const isApplied = appliedSuggestionIds.includes(sug.id);
-    setAppliedSuggestionIds((prev) =>
-      isApplied ? prev.filter((id) => id !== sug.id) : [...prev, sug.id]
-    );
-    setCat(
-      isApplied ? 'review' : 'success',
-      isApplied ? 'Removed suggestion from your resume.' : 'Applied suggestion to Preview & LaTeX.'
-    );
-    if (!isApplied) {
-      setTimeout(() => setCat('review', 'Reviewing the draft.'), 1800);
-    }
+  const handleToggleSuggestion=sug=>{
+    setAppliedSuggestionIds(prev=>prev.includes(sug.id)?prev.filter(id=>id!==sug.id):[...prev,sug.id]);
+    setCat('review','Review flag updated. Your resume is unchanged.');
   };
 
   const handleJumpToMark = (markId) => {
-    setManualLatex(null);
+    if(manualLatex!==null){setCat('review','Reset custom LaTeX first to locate an AI edit.');return;}
     if (!splitStudio) setActiveTab('preview');
     setFlashMarkId(markId);
     setTimeout(() => {
@@ -2120,11 +1308,17 @@ export default function App() {
     setTimeout(() => setFlashMarkId(null), 1600);
   };
 
-  const handleToneSwitch = (nextTone) => {
-    setCoverTone(nextTone);
-    setCoverText(buildCoverLetter(nextTone, company, position, tappedSkills));
-    setCat('review', `Cover letter shifted to ${nextTone.toLowerCase()} tone.`);
+  const regenerateLetter=async(type,nextTone=coverTone)=>{
+    if(!requestContext||busyRef.current)return;
+    if(!window.confirm('Regenerate this draft using Google Gemini? This will replace the existing draft.'))return;
+    busyRef.current=true;setLetterBusy(true);setCat('generating','Rewriting your draft…');
+    try{const data=await requestApi('generate',{...requestContext,coverTone:nextTone,mentor:recName,relationship:recRel,deadline:recDeadline,documents:[type]});
+      const draft=data.documents?.[type]?.text;if(typeof draft!=='string'||!draft.trim())throw Error('Draft missing from response.');
+      if(type==='coverLetter'){setCoverTone(nextTone);setCoverText(draft);}else{setRecDraft(splitEmail(draft,company,position));setRecManualBody(null);}
+      setCat('review','Updated draft. Review before using it.');
+    }catch(e){setCat('error',e.message);}finally{busyRef.current=false;setLetterBusy(false);}
   };
+  const handleToneSwitch=nextTone=>regenerateLetter('coverLetter',nextTone);
 
   const handleCopy = async (overrideText, labelOverride) => {
     let text = overrideText;
@@ -2144,7 +1338,7 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      // silent fallback in restricted frames
+      setCat('error','Clipboard unavailable. Download the draft instead.');return;
     }
     setCopiedFeedback('Copied');
     setCat('success', `Copied ${label}. Good luck out there!`);
@@ -2155,7 +1349,7 @@ export default function App() {
   };
 
   const handleDownload = (overrideText, overrideFilename) => {
-    const slug = (company.trim() || activePreset.company).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const slug = (company.trim() || 'application').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     let content = overrideText;
     let filename = overrideFilename;
     if (!content) {
@@ -2171,6 +1365,7 @@ export default function App() {
       }
     }
 
+    if(!filename)filename=`resumeow-${slug}${activeTab==='cover'?'-cover-letter.txt':activeTab==='rec'?'-recommendation.txt':'.tex'}`;
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2179,50 +1374,25 @@ export default function App() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
 
     setCat('success', `Downloaded ${filename}.`);
     setTimeout(() => setCat('review', 'Reviewing the draft.'), 2000);
   };
 
-  const handleSaveCurrent = () => {
-    const entry = {
-      id: `app-${Date.now()}`,
-      company: company.trim() || activePreset.company,
-      position: position.trim() || activePreset.position,
-      status: 'Draft',
-      score: liveScores.total,
-      savedAt: 'Nov 25, 2026',
-      presetId,
-      revertedIds,
-      appliedSuggestionIds,
-      tappedSkills,
-      selectedDocs,
-    };
-    setSavedApps((prev) => [entry, ...prev]);
-    setCat('success', `Saved ${entry.company} to your list.`);
-    setTimeout(() => setCat('review', 'Reviewing the draft.'), 1900);
+  const handleSaveCurrent=()=>{
+    if(!packageData||!requestContext||busyRef.current)return;
+    if(!window.confirm('Save this application, including resume and drafts, in this browser? Avoid on shared computers.'))return;
+    const entry={id:'app-'+Date.now(),company:company.trim()||'Target company',position:position.trim()||'Target role',status:'Draft',score:liveScores.total,savedAt:new Date().toLocaleDateString(),packageData,requestContext,selectedDocs,revertedIds,appliedSuggestionIds,tappedSkills,manualLatex,coverTone,coverText,recDraft,recManualBody,recName,recRel,recDeadline,sampleMode};
+    const next=[entry,...savedApps];try{localStorage.setItem(SAVED_STORAGE_KEY,JSON.stringify(next));setSavedApps(next);setCat('success','Saved locally in this browser.');}catch{setCat('error','Could not save. Browser storage may be full or disabled.');}
   };
-
-  const handleLoadSaved = (app) => {
-    const p = DEMO_PRESETS[app.presetId] || DEMO_PRESETS.anthropic;
-    setPresetId(p.id);
-    setCompany(app.company);
-    setPosition(app.position);
-    setJobDesc(p.jd);
-    setFileName(p.fileName);
-    setRevertedIds(app.revertedIds || []);
-    setAppliedSuggestionIds(app.appliedSuggestionIds || []);
-    setTappedSkills(app.tappedSkills || []);
-    setSelectedDocs(app.selectedDocs || { resume: true, coverLetter: true, recLetter: false });
-    setManualLatex(null);
-    setRecManualBody(null);
-    setSplitStudio(false);
-    setCoverText(buildCoverLetter(coverTone, app.company, app.position, app.tappedSkills || []));
-    setActiveTab(app.selectedDocs?.resume !== false ? 'preview' : 'cover');
-    setSavedOpen(false);
-    setView('results');
-    setCat('review', `Reopened ${app.company}. Everything is right where you left it.`);
+  const handleLoadSaved=app=>{
+    if(busyRef.current||!app.packageData||!app.requestContext)return;const ctx=app.requestContext;
+    setPackageData(app.packageData);setRequestContext(ctx);setCompany(ctx.company);setPosition(ctx.position);setJobDesc(ctx.jobDescription);
+    setPlainSource(ctx.resumeText);setLatexSource('');setResumeFormat('text');setFileName('');setVerified(true);setNotes(ctx.notes);setIntensity(ctx.intensity);
+    setSampleMode(!!app.sampleMode);setSelectedDocs(app.selectedDocs);setRevertedIds(app.revertedIds||[]);setAppliedSuggestionIds(app.appliedSuggestionIds||[]);setTappedSkills(app.tappedSkills||[]);
+    setManualLatex(app.manualLatex??null);setCoverTone(app.coverTone);setCoverText(app.coverText);setRecDraft(app.recDraft);setRecManualBody(app.recManualBody??null);
+    setRecName(app.recName||'');setRecRel(app.recRel||'');setRecDeadline(app.recDeadline||'');setSplitStudio(false);setActiveTab(app.selectedDocs.resume?'preview':app.selectedDocs.coverLetter?'cover':'rec');setHasCounted(false);setSavedOpen(false);setView('results');setCat('review','Reopened saved application.');
   };
 
   // Dynamic Tabs for Results View
@@ -2230,7 +1400,7 @@ export default function App() {
     const list = [];
     if (selectedDocs.resume) {
       const activeApplied =
-        activePreset.appliedChanges.length - revertedIds.length + appliedSuggestionIds.length;
+        activePreset.appliedChanges.length - revertedIds.length;
       list.push(
         { id: 'preview', label: 'Resume Preview', mobileOnly: false },
         { id: 'latex', label: 'Overleaf LaTeX', mobileOnly: false },
@@ -2290,7 +1460,7 @@ export default function App() {
             </button>
 
             <span className="rounded-full bg-[var(--peach)] px-2.5 py-0.5 text-[12.5px] text-[var(--peach-ink)]">
-              Mock data: nothing is sent to a server
+              {apiStatus}{sampleMode ? ' · SAMPLE INPUTS' : ''}
             </span>
           </div>
 
@@ -2301,7 +1471,7 @@ export default function App() {
                 type="button"
                 className={ghostBtn}
                 aria-expanded={demosOpen}
-                onClick={() => setDemosOpen((o) => !o)}
+                disabled={isGenerating || isExtracting || letterBusy} onClick={() => setDemosOpen((o) => !o)}
               >
                 <span>Demos</span>
                 <IconChevronDown />
@@ -2338,7 +1508,7 @@ export default function App() {
             </div>
 
             {/* 2. Saved Applications */}
-            <button type="button" className={ghostBtn} onClick={() => setSavedOpen(true)}>
+            <button type="button" className={ghostBtn} disabled={isGenerating || isExtracting || letterBusy} onClick={() => setSavedOpen(true)}>
               Saved ({savedApps.length})
             </button>
 
@@ -2422,7 +1592,7 @@ export default function App() {
 
             {/* Quick Results Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className={ghostBtn} onClick={handleSaveCurrent}>
+              <button type="button" className={ghostBtn} disabled={letterBusy} onClick={handleSaveCurrent}>
                 Save
               </button>
               <button type="button" className={ghostBtn} onClick={() => handleCopy()}>
@@ -2435,6 +1605,7 @@ export default function App() {
                 type="button"
                 className={ghostBtn}
                 onClick={() => {
+                  if(busyRef.current)return;
                   setView('workspace');
                   setCat('idle', 'Ready for the next role.');
                 }}
@@ -2473,7 +1644,8 @@ export default function App() {
                       key={fmt.id}
                       type="button"
                       aria-pressed={resumeFormat === fmt.id}
-                      onClick={() => setResumeFormat(fmt.id)}
+                      disabled={isGenerating || isExtracting}
+                      onClick={() => {setResumeFormat(fmt.id);setVerified(false);}}
                       className={`cursor-pointer rounded-[8px] px-3 py-1 text-[14px] transition-all ${
                         resumeFormat === fmt.id
                           ? 'bg-[var(--bg)] text-[var(--ink)] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
@@ -2509,7 +1681,8 @@ export default function App() {
                       <input
                         type="file"
                         hidden
-                        accept=".pdf,.tex,.txt"
+                        accept=".pdf,.tex,.txt,.md"
+                        disabled={isGenerating || isExtracting}
                         onChange={(e) => handleSelectFile(e.target.files?.[0])}
                       />
                       {fileName ? (
@@ -2524,11 +1697,10 @@ export default function App() {
                     <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[13.5px]">
                       <button
                         type="button"
+                        disabled={isGenerating || isExtracting}
                         onClick={() => {
-                          setFileName('Alex_Rivera_Master_Resume.pdf');
-                          setFormError('');
-                          setCat('upload', 'Loaded Alex_Rivera_Master_Resume.pdf.');
-                          setTimeout(() => setCat('idle', 'Got it. Now add the job description.'), 1500);
+                          setSampleMode(true);setPlainSource(SAMPLE_PLAIN_RESUME);setFileName('Sample resume');setResumeFormat('text');setVerified(false);
+                          setCat('idle','Sample resume loaded. Replace it with your own for real applications.');
                         }}
                         className="cursor-pointer text-[var(--lav)] hover:underline underline-offset-4"
                       >
@@ -2539,7 +1711,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
-                            setFileName('');
+                            if(busyRef.current)return;setFileName('');setPlainSource('');setLatexSource('');setVerified(false);setSampleMode(false);
                             setCat('idle', 'Resume removed.');
                           }}
                           className="cursor-pointer text-[var(--mute)] hover:text-[var(--ink)]"
@@ -2555,7 +1727,8 @@ export default function App() {
                   <textarea
                     aria-label="Master resume LaTeX source"
                     value={latexSource}
-                    onChange={(e) => setLatexSource(e.target.value)}
+                    disabled={isGenerating || isExtracting}
+                    onChange={(e) => {setLatexSource(e.target.value);setVerified(false);}}
                     placeholder="Paste your Overleaf or LaTeX resume…"
                     className="rm-field rm-scroll min-h-[180px] resize-y font-mono text-[13px] leading-[1.6] 2xl:min-h-[300px]"
                   />
@@ -2565,12 +1738,17 @@ export default function App() {
                   <textarea
                     aria-label="Master resume plain text"
                     value={plainSource}
-                    onChange={(e) => setPlainSource(e.target.value)}
+                    disabled={isGenerating || isExtracting}
+                    onChange={(e) => {setPlainSource(e.target.value);setVerified(false);}}
                     placeholder="Paste your plain-text resume…"
                     className="rm-field rm-scroll min-h-[180px] resize-y text-[14.5px] leading-[1.6] 2xl:min-h-[300px]"
                   />
                 )}
 
+                {resumeFormat==='latex' && <button type="button" className={ghostBtn} disabled={isExtracting||isGenerating||!latexSource.trim()} onClick={handleExtractLatex}>Extract and review text</button>}
+                {isExtracting && <p className="mt-2 text-[13px] text-[var(--mute)]">Extracting resume…</p>}
+                {resumeFormat==='text' && <label className="mt-3 flex items-center gap-2 text-[13.5px] text-[var(--mute)]"><input type="checkbox" checked={verified} disabled={isGenerating||isExtracting} onChange={e=>setVerified(e.target.checked)} className="accent-[var(--lav)]"/>I reviewed the resume text for accuracy.</label>}
+                <p className="mt-2 text-[12.5px] text-[var(--mute)]">Extraction and generation use Google Gemini after confirmation. Review all drafts before applying.</p>
                 {/* Quiet 1-line Quick Stats */}
                 {resumeStats && (
                   <p className="mt-3 text-[13px] text-[var(--mute)]">
@@ -2591,7 +1769,7 @@ export default function App() {
                       Company
                     </label>
                     <input
-                      id="rm-company"
+                      id="rm-company" disabled={isGenerating || isExtracting}
                       type="text"
                       placeholder="Acme Robotics"
                       value={company}
@@ -2604,7 +1782,7 @@ export default function App() {
                       Position
                     </label>
                     <input
-                      id="rm-position"
+                      id="rm-position" disabled={isGenerating || isExtracting}
                       type="text"
                       placeholder="ML Engineering Intern"
                       value={position}
@@ -2618,7 +1796,7 @@ export default function App() {
                   Job description
                 </label>
                 <textarea
-                  id="rm-jd"
+                  id="rm-jd" disabled={isGenerating || isExtracting}
                   placeholder="Paste the full posting."
                   value={jobDesc}
                   onFocus={() => setCat('reading', 'Reading closely…')}
@@ -2669,7 +1847,7 @@ export default function App() {
                   </p>
 
                   <textarea
-                    aria-label="Optional tailoring notes"
+                    aria-label="Optional tailoring notes" disabled={isGenerating || isExtracting}
                     placeholder="Keep it to one page. Lead with research."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -2682,7 +1860,7 @@ export default function App() {
                       <button
                         key={chip}
                         type="button"
-                        onClick={() => handleAddStarterChip(chip)}
+                        disabled={isGenerating || isExtracting} onClick={() => handleAddStarterChip(chip)}
                         className="cursor-pointer text-[13px] text-[var(--mute)] transition-colors hover:text-[var(--lav)]"
                       >
                         + {chip}
@@ -2703,7 +1881,7 @@ export default function App() {
                         <button
                           type="button"
                           aria-pressed={intensity === level}
-                          onClick={() => setIntensity(level)}
+                          disabled={isGenerating || isExtracting} onClick={() => setIntensity(level)}
                           className={`cursor-pointer border-b-[1.5px] pb-0.5 transition-colors ${
                             intensity === level
                               ? 'border-[var(--lav)] font-medium text-[var(--ink)]'
@@ -2726,7 +1904,7 @@ export default function App() {
 
                   <div className="mb-6 divide-y divide-[var(--line)] border-b border-[var(--line)]">
                     {[
-                      { key: 'resume', title: 'Tailored resume', meta: '1 page' },
+                      { key: 'resume', title: 'Tailored resume', meta: 'LaTeX' },
                       { key: 'coverLetter', title: 'Cover letter', meta: 'Draft' },
                       { key: 'recLetter', title: 'Recommendation request', meta: 'Email' },
                     ].map((doc) => (
@@ -2737,6 +1915,7 @@ export default function App() {
                         <input
                           type="checkbox"
                           checked={selectedDocs[doc.key]}
+                          disabled={isGenerating || isExtracting}
                           onChange={() =>
                             setSelectedDocs((d) => ({ ...d, [doc.key]: !d[doc.key] }))
                           }
@@ -2748,9 +1927,10 @@ export default function App() {
                     ))}
                   </div>
 
+                  {selectedDocs.recLetter && <div className="mb-4 space-y-2 text-[13px]"><label>Recommender (optional)<input className="rm-field" value={recName} disabled={isGenerating} onChange={e=>setRecName(e.target.value)}/></label><label>Relationship<input className="rm-field" value={recRel} disabled={isGenerating} onChange={e=>setRecRel(e.target.value)}/></label><label>Deadline<input className="rm-field" value={recDeadline} disabled={isGenerating} onChange={e=>setRecDeadline(e.target.value)}/></label></div>}
                   <button
                     type="button"
-                    disabled={isGenerating}
+                    disabled={isGenerating || isExtracting}
                     onClick={handleGenerate}
                     className="cursor-pointer rounded-[12px] bg-[var(--lav)] px-6 py-3 text-[15.5px] font-bold text-[var(--lav-ink)] transition-all hover:brightness-105 active:scale-[0.97] disabled:cursor-wait disabled:opacity-75"
                   >
@@ -2952,7 +2132,7 @@ export default function App() {
                   {activeTab === 'compare' && (
                     <div>
                       <p className="mb-5 text-[14px] text-[var(--mute)]">
-                        Mint marks tailored additions. Peach strikethrough shows replaced original lines.
+                        Mint marks AI edits. Peach strikethrough shows replaced original lines. Custom LaTeX edits are not included in this report.
                       </p>
 
                       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-9">
@@ -3006,33 +2186,8 @@ export default function App() {
                               );
                             })}
 
-                            {activePreset.suggestions
-                              .filter((s) => appliedSuggestionIds.includes(s.id))
-                              .map((sug) => (
-                                <div key={sug.id} className="py-3.5">
-                                  <div className="mb-1 text-[12.5px] text-[var(--mute)]">
-                                    Applied suggestion
-                                  </div>
-                                  <p className="m-0 text-[15px]">
-                                    <mark className="rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)]">
-                                      {sug.bulletText}
-                                    </mark>
-                                  </p>
-                                </div>
-                              ))}
-
-                            {tappedSkills.length > 0 && (
-                              <div className="py-3.5">
-                                <div className="mb-1 text-[12.5px] text-[var(--mute)]">
-                                  Skills added by you
-                                </div>
-                                <p className="m-0 text-[15px]">
-                                  <mark className="rounded-[3px] bg-[var(--mint)] px-1 py-0.5 text-[var(--mint-ink)]">
-                                    {tappedSkills.join(', ')}
-                                  </mark>
-                                </p>
-                              </div>
-                            )}
+                            {appliedSuggestionIds.length>0 && <p className="py-3 text-[13px] text-[var(--mute)]">{appliedSuggestionIds.length} suggestion(s) flagged for review; no resume content added.</p>}
+                            {tappedSkills.length>0 && <p className="py-3 text-[13px] text-[var(--mute)]">Flagged requirements: {tappedSkills.join(', ')}. Score and resume unchanged.</p>}
                           </div>
                         </div>
                       </div>
@@ -3065,6 +2220,7 @@ export default function App() {
                               <button
                                 type="button"
                                 aria-pressed={coverTone === t}
+                                disabled={letterBusy}
                                 onClick={() => handleToneSwitch(t)}
                                 className={`cursor-pointer border-b-[1.5px] pb-0.5 transition-colors ${
                                   coverTone === t
@@ -3123,7 +2279,6 @@ export default function App() {
                             value={recName}
                             onChange={(e) => {
                               setRecName(e.target.value);
-                              setRecManualBody(null);
                             }}
                             className="rm-field"
                           />
@@ -3138,7 +2293,6 @@ export default function App() {
                             value={recRel}
                             onChange={(e) => {
                               setRecRel(e.target.value);
-                              setRecManualBody(null);
                             }}
                             className="rm-field"
                           />
@@ -3153,7 +2307,6 @@ export default function App() {
                             value={recDeadline}
                             onChange={(e) => {
                               setRecDeadline(e.target.value);
-                              setRecManualBody(null);
                             }}
                             className="rm-field"
                           />
@@ -3164,6 +2317,7 @@ export default function App() {
                         <div className="text-[14px]">
                           <span className="text-[var(--mute)]">Subject: </span>
                           <strong>{generatedRec.subject}</strong>
+                          <button type="button" className="ml-3 text-[var(--lav)] hover:underline" disabled={letterBusy} onClick={()=>regenerateLetter('recommendation')}>{letterBusy?'Updating…':'Regenerate with details'}</button>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
