@@ -3,10 +3,10 @@ import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vite';
 import {fileURLToPath} from 'node:url';
 
-// Keep the current API-connected UI and final mock design as separate entries.
+// Default: final React design. Preserve the API-connected workspace separately.
 // Never inject server secrets into browser bundles.
 export default defineConfig({
   plugins:[react(),tailwindcss()],
   server:{hmr:process.env.DISABLE_HMR !== 'true'},
-  build:{rollupOptions:{input:{main:fileURLToPath(new URL('./index.html',import.meta.url)),design:fileURLToPath(new URL('./design.html',import.meta.url))}}}
+  build:{rollupOptions:{input:{main:fileURLToPath(new URL('./index.html',import.meta.url)),design:fileURLToPath(new URL('./design.html',import.meta.url)),live:fileURLToPath(new URL('./live.html',import.meta.url))}}}
 });

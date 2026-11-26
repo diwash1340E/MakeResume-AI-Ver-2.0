@@ -1,6 +1,6 @@
 # ResuMeow
 
-A local-first application workspace for tailoring resumes, drafting cover letters and requesting recommendations. The approved HTML design and cat mascot are preserved; Gemini is called only by the server.
+A local-first application workspace for tailoring resumes, drafting cover letters and requesting recommendations. The final React design is the default page; the earlier API-connected HTML workspace remains available separately. Gemini is called only by the server.
 
 ## Setup
 
@@ -10,13 +10,13 @@ Use Node.js 22+ and npm.
 2. Run `npm ci`.
 3. Copy `.env.example` to `.env.local` and insert your own Gemini API key. Set GEMINI_MODEL to an available model if necessary. Never commit the key.
 4. Run `npm run dev`, then visit http://127.0.0.1:3000.
-5. Check the connection indicator. Upload or paste a resume, review extracted text, select your documents and generate.
+5. The root URL opens the final React mock design. To use the earlier API-connected workspace, visit http://127.0.0.1:3000/live.html and check its connection indicator before generating.
 
 `npm run build` builds the frontend. `npm run start` serves the built frontend and API. `npm test` tests deterministic backend logic without a key.
 
 ## Final React design preview
 
-The user-approved `src/resumeow_ai_career_assistant.tsx` is preserved exactly as uploaded. Run `npm run dev` and open http://127.0.0.1:3000/design.html to review it. It is a separate mock-data prototype (no API calls); use sample data only. The root URL still serves the existing API-connected HTML frontend. Do not use demo-generated claims or scores in a real application. The next implementation step is to bind the final React design to the existing extraction and generation API and replace its sample persistence, scores and document builders with real results. The new Vite configuration builds both entry pages.
+The user-approved `src/resumeow_ai_career_assistant.tsx` is preserved byte-for-byte as uploaded. Run `npm run dev` and open http://127.0.0.1:3000/ (or /design.html). This design is currently a mock-data prototype (no API calls); use sample data only. The previous API-connected frontend is available at /live.html. Do not use demo-generated claims or scores in a real application. The next step is to bind the final React design to the existing extraction and generation API. Vite builds all three entry pages.
 
 ## Behavior and limitations
 
