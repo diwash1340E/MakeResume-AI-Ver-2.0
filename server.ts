@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { normalizePackage } from "./backend/core.mjs";
 import { latexToText, pdfToText } from "./backend/extract.mjs";
-import { providerConfigs, publicProviders, isConfigured, generateWith, ProviderError } from "./backend/providers.mjs";
+import { geminiConfig, publicConfig, isConfigured, generateWith, ProviderError, testConnection } from "./backend/providers.mjs";
 import { masterStore } from "./backend/master-store.mjs";
 
 dotenv.config({path:".env.local",quiet:true});
@@ -12,10 +12,8 @@ dotenv.config({quiet:true});
 const app=express();
 const port=Number(process.env.PORT||3000);
 const host=process.env.HOST||"127.0.0.1";
-const configs=providerConfigs();
-const defaultProvider=process.env.AI_PROVIDER||"gemini";
-if(!Object.hasOwn(configs,defaultProvider))throw new Error("Invalid AI_PROVIDER in .env.local.");
-const configured=isConfigured(configs[defaultProvider]);
+const config=geminiConfig();
+const configured=isConfigured(config);
 const maxPdf=5*1024*1024;
 const maxResume=50000;
 const maxJob=30000;
@@ -50,7 +48,8 @@ function stringInput(v:unknown,label:string,max:number,required=false){
   if(typeof v!=="string"||v.length>max||(required&&!v.trim()))throw new ApiError(400,label+" is missing or too long (limit "+max+" characters).");
   return v.trim();
 }
-app.get("/api/health",(_req,res)=>res.json({status:"ok",aiConfigured:configured,model:configs[defaultProvider].model,defaultProvider,providers:publicProviders(configs),localOnly:true,localExtraction:true}));
+app.get("/api/health",(_req,res)=>res.json({status:"ok",aiConfigured:configured,model:config.model,defaultProvider:"gemini",providers:[publicConfig(config)],localOnly:true,localExtraction:true}));
+app.post("/api/gemini/test",limited,async(_req,res,next)=>{try{res.json(await testConnection(config));}catch(e){next(e);}});
 app.get("/api/master",(_req,res,next)=>{try{res.json({resume:masterStore().get()});}catch(e){next(e);}});
 app.post("/api/master",limited,(req,res,next)=>{try{
  const action=req.body?.action;
@@ -89,10 +88,8 @@ app.post("/api/generate",limited,async(req,res,next)=>{
     if(!["Light","Balanced","Strong"].includes(intensity)||!["Concise","Formal","Enthusiastic"].includes(coverTone))throw new ApiError(400,"Invalid tailoring preferences.");
     if(!Array.isArray(body.documents)||!body.documents.length||body.documents.length>3||body.documents.some((x:unknown)=>typeof x!=="string"||!allowedDocs.includes(x)))throw new ApiError(400,"Select at least one valid document.");
     const selected=[...new Set<string>(body.documents)];
-    const provider=body.provider===undefined?defaultProvider:body.provider;
-    if(typeof provider!=="string"||!Object.hasOwn(configs,provider))throw new ApiError(400,"Unknown AI provider.");
-    const config=configs[provider];
-    if(config.cloud&&body.cloudConsent!==true)throw new ApiError(403,"Allow sending reviewed resume data to the selected provider before generating.");
+    if(body.provider!==undefined&&body.provider!=="gemini")throw new ApiError(400,"Only Gemini generation is enabled.");
+    if(body.cloudConsent!==true)throw new ApiError(403,"Allow sending reviewed resume data to Gemini before generating.");
     const output=await generateWith(config,systemPrompt,JSON.stringify({resumeText,jobDescription,company,position,notes,mentor,relationship,deadline,intensity,coverTone,documents:selected}));
     let raw;try{raw=JSON.parse(output)}catch{throw new ApiError(502,"AI provider returned invalid JSON. Please retry.");}
     try{res.json(normalizePackage(resumeText,selected,raw))}catch(e){throw new ApiError(502,e instanceof Error?e.message:"Invalid generated package.")}
@@ -112,6 +109,6 @@ async function start(){
   }else{
     const dist=path.join(process.cwd(),"dist");app.use(express.static(dist));app.get("*",(_req,res)=>res.sendFile(path.join(dist,"index.html")));
   }
-  app.listen(port,host,()=>console.log("ResuMeow running at http://"+host+":"+port+" ("+defaultProvider+" "+(configured?"configured":"not configured")+")"));
+  app.listen(port,host,()=>console.log("ResuMeow running at http://"+host+":"+port+" (Gemini "+(configured?"configured":"not configured")+")"));
 }
 start().catch(e=>{console.error("Startup failed:",e.message);process.exitCode=1});

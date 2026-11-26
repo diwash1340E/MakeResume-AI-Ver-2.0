@@ -1,38 +1,26 @@
-# ResuMeow — Backend V2
+# ResuMeow — Gemini-only local application
 
-The default React UI uses local document extraction, a local SQLite master-resume store, and selectable AI generation providers. Dark mode and the approved layout are preserved. /design.html uses the same React app; /live.html is the older Gemini-only interface.
+## Setup
+Use Node.js 22.13 or newer. On the resumeow-v2 branch, run npm install (the PDF.js addition requires refreshing the older lockfile), then npm run dev. Open http://127.0.0.1:3000. The React layout defaults to dark mode.
 
-## Setup (Windows or macOS)
+Create .env.local from .env.example and fill in GEMINI_API_KEY privately using Google AI Studio. GEMINI_MODEL defaults to gemini-3.8-flash and can be changed to an available model. Restart the server. AI settings shows key configuration; Test Gemini connection performs a small structured-output request without sending personal data (may consume quota). The key is read only server-side and .env.local is ignored by Git. Never use a VITE_ prefix for secrets. Do not paste the key into ChatGPT, source code or GitHub.
 
-Use Node.js 22.13 or newer. Run `git switch resumeow-v2`, `git pull origin resumeow-v2`, then **`npm install`** (not npm ci for this update, because PDF.js was added and the existing lockfile needs regeneration). Run `npm run dev` and open http://127.0.0.1:3000.
+## Workflow
+Upload a text-based PDF or LaTeX file, or paste plain text. PDF.js and a limited LaTeX parser work locally; scanned PDFs may need external OCR and custom commands may require manual correction. Review and confirm extracted text. Save / replace master stores reviewed text in SQLite at ~/.resumeow/master.sqlite; load/delete it in the master panel. Saved application drafts are stored separately in browser localStorage. These stores are unencrypted, intended for single-user development. Supabase, cloud database credentials, authentication and remote persistence are deliberately deferred. No migration or Supabase endpoint is configured.
 
-Copy .env.example to .env.local if you do not already have that file. Keep credentials private. Select a provider in AI settings:
-
-- Gemini: GEMINI_API_KEY and GEMINI_MODEL.
-- OpenAI: OPENAI_API_KEY and OPENAI_MODEL (a Chat Completions model supporting JSON mode).
-- Anthropic: ANTHROPIC_API_KEY and ANTHROPIC_MODEL (a Messages API model).
-- Ollama: install Ollama from its official site, download a local model with `ollama pull qwen2.5:7b`, and ensure the service is running at http://127.0.0.1:11434. Set OLLAMA_MODEL if using another installed model. No cloud API key is needed.
-
-AI_PROVIDER controls the initial selection; existing browser preferences take priority. Restart after editing .env.local. Health reports configuration, not live provider availability. Cloud providers require a remembered, provider-specific consent checkbox before sending generation data. Changing providers does not automatically grant consent.
-
-## Processing and storage
-
-PDF.js extracts text from ordinary PDFs locally (5 MB, 25 pages max). LaTeX uses a limited local parser without executing commands or reading external files. Plain text is read directly. Scanned or complex PDFs and custom LaTeX may require manual correction or OCR outside the app; review every line. No automatic cloud fallback.
-
-Confirm reviewed text, then Save / replace master to store it at ~/.resumeow/master.sqlite (on Windows, %USERPROFILE%\.resumeow\master.sqlite). Load it for future applications; Delete saved master removes the row after a separate confirmation. Stored text is unencrypted; avoid shared computers. Saved application drafts still use browser localStorage and are separate from master storage. No server application-history database yet.
-
-Generation sends reviewed data to the selected provider, or to local Ollama. No automatic provider fallback. Source-based edit validation and weighted match scoring remain in place. Review semantic accuracy. The score is an evidence estimate of the original resume, not an ATS score. LaTeX export uses a standard template and the preview is approximate; compile in Overleaf. Demos load fictional inputs only. No automatic email sending.
-
-## Tests and deployment
-
-`npm test` runs deterministic tests including provider fixtures and in-memory SQLite. `npm run build` builds all entry pages; `npm run start` serves the build. Actual PDF extraction, full browser and real provider requests need end-to-end testing after dependencies are installed. Run `npm audit` and review vulnerabilities before deployment. The existing lockfile must be regenerated with npm install; commit the resulting lockfile after reviewing it.
-
-The server is loopback-only and rejects cross-origin API requests. Do not expose it publicly without authentication, HTTPS, appropriate storage protection, request quotas and privacy review. No server resume-content logging; cloud provider retention policies apply.
+Enable the remembered Gemini consent in AI settings before generation. Paste a job posting, select documents, set tone/intensity, and generate. Gemini returns schema-constrained JSON; backend checks source-grounded edits, scores original-resume evidence, and creates LaTeX. Review all facts and drafts. Flags do not automatically add skills or raise scores. The LaTeX preview is approximate; verify compilation in Overleaf. No automatic sending or publishing.
 
 ## API
-
-GET /api/health — provider configuration, default provider and local extraction availability (no secrets).
-GET /api/master — saved reviewed text or null.
+GET /api/health — configuration only, no secrets.
+POST /api/gemini/test — {} performs a small live JSON generation test, no personal data.
+GET /api/master — reviewed local master or null.
 POST /api/master — {action:"save",text,verified:true} or {action:"delete"}.
-POST /api/extract — {format:"pdf"|"latex",data}; returns {text,warnings,reviewRequired,local}.
-POST /api/generate — existing fields plus provider and cloudConsent; returns selected drafts, changes, recommendations and match analysis.
+POST /api/extract — {format:"pdf"|"latex",data}, local extraction and warnings.
+POST /api/generate — reviewed resumeText, jobDescription, optional metadata, documents and cloudConsent:true. Gemini only. Old clients may pass provider:"gemini".
+
+## Testing and publishing
+npm test — deterministic tests, mocked Gemini transport and SQLite fixture.
+npm run build — build frontend.
+npm run start — serve production build on loopback only.
+npm audit — review dependencies; do not use audit fix --force blindly.
+Real PDF, browser, build, SQLite and live Gemini testing require the local runtime/dependencies/key. No public deployment is performed. Before public hosting, add authentication, user isolation, secure storage, quotas and HTTPS. Keep the backend local-only until those are in place. See docs/LOCAL_LLAMA.md for a standalone local-model experiment, not an active ResuMeow provider.

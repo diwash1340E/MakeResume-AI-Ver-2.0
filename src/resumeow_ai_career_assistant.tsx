@@ -974,13 +974,15 @@ export default function App() {
   const [providers,setProviders]=useState([]);
   const [provider,setProvider]=useState('');
   const [providerOpen,setProviderOpen]=useState(false);
+  const [geminiTest,setGeminiTest]=useState('');
+  const [testingGemini,setTestingGemini]=useState(false);
   const [cloudPermissions,setCloudPermissions]=useState(()=>{try{const v=JSON.parse(localStorage.getItem('resumeow_cloud_permissions_v1')||'{}');return v&&typeof v==='object'?v:{};}catch{return {};}});
   const [masterMessage,setMasterMessage]=useState('');
   const [deleteMasterArmed,setDeleteMasterArmed]=useState(false);
   const selectedProvider=providers.find(p=>p.id===provider);
   const cloudAllowed=selectedProvider?.cloud===false||cloudPermissions[provider]===true;
   useEffect(()=>{try{localStorage.setItem('resumeow_cloud_permissions_v1',JSON.stringify(cloudPermissions));}catch{}},[cloudPermissions]);
-  useEffect(()=>{if(provider){try{localStorage.setItem('resumeow_provider_v1',provider);}catch{}}},[provider]);
+  // Gemini is the only generation provider; no saved provider override.
   const busyRef = useRef(false);
   const [letterBusy, setLetterBusy] = useState(false);
 
@@ -1052,8 +1054,7 @@ export default function App() {
     requestApi('health').then(h=>{
       if(!Array.isArray(h.providers))throw Error('Update the backend.');
       setProviders(h.providers);
-      let saved='';try{saved=localStorage.getItem('resumeow_provider_v1')||'';}catch{}
-      setProvider(h.providers.some(p=>p.id===saved)?saved:h.defaultProvider);
+      setProvider('gemini');
       setApiStatus('Local extraction ready');
     }).catch(()=>setApiStatus('Backend unavailable — restart server'));
   },[]);
@@ -1298,8 +1299,8 @@ export default function App() {
     if(!jobDesc.trim())return fail('Add a job description first.');
     const documents=[...(selectedDocs.resume?['resume']:[]),...(selectedDocs.coverLetter?['coverLetter']:[]),...(selectedDocs.recLetter?['recommendation']:[])];
     if(!documents.length)return fail('Select at least one document.');
-    if(!selectedProvider?.configured){setProviderOpen(true);return fail('Configure an AI provider and model in .env.local. For local Ollama, install and start it first.');}
-    if(!cloudAllowed){setProviderOpen(true);return fail('Allow data sharing for the selected cloud provider in AI settings, or select local Ollama.');}
+    if(!selectedProvider?.configured){setProviderOpen(true);return fail('Add GEMINI_API_KEY in .env.local and restart ResuMeow.');}
+    if(!cloudAllowed){setProviderOpen(true);return fail('Allow Gemini data sharing in AI settings.');}
     const context={resumeText,jobDescription:jobDesc.trim(),company:company.trim(),position:position.trim(),notes,intensity,coverTone,mentor:recName,relationship:recRel,deadline:recDeadline};
     busyRef.current=true;setIsGenerating(true);setFormError('');setCat('generating','Typing up your documents…');
     try{
@@ -1346,7 +1347,7 @@ export default function App() {
 
   const regenerateLetter=async(type,nextTone=coverTone)=>{
     if(!requestContext||busyRef.current)return;
-    if(!selectedProvider?.configured||!cloudAllowed){setProviderOpen(true);setCat('error','Configure the selected provider and allow cloud sharing if needed.');return;}
+    if(!selectedProvider?.configured||!cloudAllowed){setProviderOpen(true);setCat('error','Configure Gemini and allow data sharing in AI settings.');return;}
     busyRef.current=true;setLetterBusy(true);setCat('generating','Rewriting your draft…');
     try{const data=await requestApi('generate',{...requestContext,coverTone:nextTone,mentor:recName,relationship:recRel,deadline:recDeadline,documents:[type],provider,cloudConsent:cloudAllowed});
       const draft=data.documents?.[type]?.text;if(typeof draft!=='string'||!draft.trim())throw Error('Draft missing from response.');
@@ -1584,14 +1585,10 @@ export default function App() {
             <button type="button" className={ghostBtn} aria-expanded={providerOpen} onClick={()=>setProviderOpen(v=>!v)}>AI settings <IconChevronDown/></button>
           </div>
           {providerOpen&&<div className="rm-fade mt-3 space-y-3 text-[var(--mute)]">
-            <label className="flex flex-wrap items-center gap-3">Provider
-              <select aria-label="AI provider" className="rm-field max-w-[320px]" value={provider} disabled={isGenerating||isExtracting||letterBusy} onChange={e=>setProvider(e.target.value)}>
-                {!providers.length&&<option value="">Backend unavailable</option>}
-                {providers.map(p=><option key={p.id} value={p.id} style={{background:'var(--bg)',color:'var(--ink)'}}>{p.label}{p.configured?'':' — configure first'}</option>)}
-              </select>
-            </label>
-            {selectedProvider?.cloud?<label className="flex items-start gap-2"><input type="checkbox" className="mt-1 accent-[var(--lav)]" checked={cloudPermissions[provider]===true} disabled={isGenerating||letterBusy} onChange={e=>setCloudPermissions(prev=>({...prev,[provider]:e.target.checked}))}/><span>Allow {selectedProvider.label} to receive my reviewed resume, job description and instructions when I generate or regenerate documents. Remember this choice on this browser; uncheck to revoke. Uploads and extraction stay on this computer.</span></label>:selectedProvider&&<p>Ollama runs on this computer. No cloud AI key is needed. Start Ollama and install the configured local model; readiness is not yet verified.</p>}
-            <p>Keys and model IDs are configured in the private server-side .env.local file. Restart the server after changes. Configured does not mean credentials have been tested.</p>
+            <p>Google Gemini is the only AI generation provider. Resume extraction and master storage stay local.</p>
+            <label className="flex items-start gap-2"><input type="checkbox" className="mt-1 accent-[var(--lav)]" checked={cloudPermissions.gemini===true} disabled={isGenerating||letterBusy} onChange={e=>setCloudPermissions(prev=>({...prev,gemini:e.target.checked}))}/><span>Allow Google Gemini to receive my reviewed resume, job description and instructions when I generate or regenerate documents. Remember this choice on this browser; uncheck to revoke.</span></label>
+            <div className="flex flex-wrap items-center gap-3"><button type="button" className={ghostBtn} disabled={!selectedProvider?.configured||testingGemini||isGenerating||isExtracting||letterBusy} onClick={async()=>{if(busyRef.current)return;busyRef.current=true;setTestingGemini(true);setGeminiTest('Testing with a short, non-personal message…');try{const result=await requestApi('gemini/test',{});setGeminiTest(result.ok?'Connected: '+result.model:'Unexpected test response.');}catch(e){setGeminiTest(e.message);}finally{busyRef.current=false;setTestingGemini(false);}}}>{testingGemini?'Testing…':'Test Gemini connection'}</button><span role="status">{geminiTest}</span></div>
+            <p>Add GEMINI_API_KEY in the private server-side .env.local file. Restart the server after changes. Testing sends a short message to Google and may use quota; it does not send your resume.</p>
           </div>}
         </div>
 
@@ -1807,7 +1804,7 @@ export default function App() {
                   {deleteMasterArmed&&<button type="button" className="text-[13px] text-[var(--mute)]" onClick={()=>{setDeleteMasterArmed(false);setMasterMessage('Deletion canceled.');}}>Cancel</button>}
                 </div>
                 {masterMessage&&<p role="status" className="mt-2 text-[13px] text-[var(--mute)]">{masterMessage}</p>}
-                <p className="mt-2 text-[12.5px] text-[var(--mute)]">PDF and LaTeX extraction are local. Saving stores reviewed text unencrypted on this computer. AI generation uses the provider you select. Review all drafts before applying.</p>
+                <p className="mt-2 text-[12.5px] text-[var(--mute)]">PDF and LaTeX extraction are local. Saving stores reviewed text unencrypted on this computer. AI generation uses Gemini after consent. Review all drafts before applying.</p>
                 {/* Quiet 1-line Quick Stats */}
                 {resumeStats && (
                   <p className="mt-3 text-[13px] text-[var(--mute)]">
