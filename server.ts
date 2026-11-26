@@ -9,7 +9,7 @@ dotenv.config({quiet:true});
 const app=express();
 const port=Number(process.env.PORT||3000);
 const host=process.env.HOST||"127.0.0.1";
-const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
+const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
 const key=process.env.GEMINI_API_KEY;
 const configured=Boolean(key&&key!=="MY_GEMINI_API_KEY"&&key!=="your_key_here");
 const maxPdf=5*1024*1024;
