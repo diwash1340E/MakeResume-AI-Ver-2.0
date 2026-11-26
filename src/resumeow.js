@@ -9,14 +9,14 @@ function node(tag,value='',cls=''){const n=document.createElement(tag);if(cls)n.
 function wake(){clearTimeout(nap);if(quiet||busy||extracting)return;nap=setTimeout(()=>{if(cat.dataset.state==='idle')set('sleep','Zzz… tap me when you’re back.')},25000)}
 function refreshControls(){$('#gen').disabled=busy||extracting;$('#file').disabled=busy||extracting;$('#resumeText').disabled=busy||extracting;$('#verified').disabled=busy||extracting;document.querySelectorAll('.seg button,.docs input').forEach(b=>b.disabled=busy||extracting);}
 async function api(route,body){let response;try{response=await fetch('/api/'+route,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(110000)})}catch{throw Error('Cannot reach ResuMeow server. Start npm run dev and try again.')}let data;try{data=await response.json()}catch{throw Error('Server returned an invalid response. Use npm run dev, not a standalone HTML preview.')}if(!response.ok)throw Error(data.error||'Request failed.');return data}
-async function health(){try{const h=await api('health');text('#connection',h.aiConfigured?'Gemini key configured — not yet verified':'AI setup required: add GEMINI_API_KEY');}catch{text('#connection','Backend unavailable — run local server')}}health();
+async function health(){try{const h=await api('health');text('#connection',h.providers?.find(p=>p.id==='gemini')?.configured?'Gemini key configured — not yet verified':'AI setup required: add GEMINI_API_KEY');}catch{text('#connection','Backend unavailable — run local server')}}health();
 function mode(value){format=value;const accepts={pdf:'.pdf',latex:'.tex',text:'.txt,.md'};$('#file').accept=accepts[value];document.querySelectorAll('.seg[aria-label="Resume format"] button').forEach((b,i)=>b.setAttribute('aria-pressed',String(['pdf','latex','text'][i]===value)))}
 document.querySelectorAll('.seg[aria-label="Resume format"] button').forEach((b,i)=>b.onclick=()=>mode(['pdf','latex','text'][i]));
 function showExtracted(value){$('#resumeText').value=value;$('#verified').checked=false;text('#extractStatus','Review the extracted text, correct any errors, and confirm before generating.');}
 function read64(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('Could not read file.'));reader.readAsDataURL(file)})}
 async function pick(file){if(!file||busy||extracting)return;const extension=file.name.split('.').pop().toLowerCase(),kind={pdf:'pdf',tex:'latex',txt:'text',md:'text'}[extension];if(!kind){text('#extractStatus','Choose a PDF, .tex, .txt or .md file.');set('error','I cannot read that file type.');return}
 if(file.size>5*1024*1024){text('#extractStatus','File limit is 5 MB.');set('error','That file is too large.');return}
-if(kind!=='text'&&!confirm('Extracting this file sends its contents to Google Gemini. Continue?')){$('#file').value='';return}
+
 const version=++uploadVersion;extracting=true;mode(kind);refreshControls();$('#verified').checked=false;$('#resumeText').value='';text('#dropt',file.name);text('#extractStatus','Extracting resume text…');set('upload','Reading your resume…');
 try{let result;if(kind==='pdf')result=(await api('extract',{format:'pdf',data:await read64(file)})).text;else if(kind==='latex')result=(await api('extract',{format:'latex',data:await file.text()})).text;else result=await file.text();if(version!==uploadVersion)return;if(!result.trim())throw Error('No resume text was found.');showExtracted(result);set('idle','Got it. Check the text before we start.')}catch(e){if(version===uploadVersion){text('#extractStatus',e.message);set('error','I could not read that resume.')}}finally{if(version===uploadVersion){extracting=false;refreshControls();wake()}}}
 $('#file').onchange=e=>pick(e.target.files[0]);
@@ -33,7 +33,7 @@ $('#gen').onclick=async()=>{
  const resumeText=$('#resumeText').value.trim(),jobDescription=$('#jd').value.trim(),documents=[...document.querySelectorAll('.docs input:checked')].map(c=>c.value);
  if(!resumeText)return error('Upload or paste your master resume first.');
  if(/\\(?:documentclass|begin\s*\{document\}|section\*?\s*\{)/.test(resumeText)){
-   if(!confirm('Convert this LaTeX source to editable text using Google Gemini?'))return;
+
    extracting=true;refreshControls();text('#err','');set('upload','Reading your LaTeX source…');try{showExtracted((await api('extract',{format:'latex',data:resumeText})).text);set('idle','Review the extracted text, then generate.')}catch(e){error(e.message)}finally{extracting=false;refreshControls()}return;
  }
  if(!$('#verified').checked)return error('Review and confirm your resume text first.');
@@ -41,7 +41,7 @@ $('#gen').onclick=async()=>{
  if(!documents.length)return error('Select at least one document.');
  if(!confirm('Generate drafts using Google Gemini? Your reviewed resume, job description, company, position and optional notes will be sent to Google.'))return;
  busy=true;refreshControls();text('#err','');$('#gw').classList.add('busy');$('#gen').textContent='Generating documents…';set('generating','Typing up your documents…');
- try{const data=await api('generate',{resumeText,jobDescription,documents,company:$('#co').value,position:$('#po').value,notes:$('#ci').value,mentor:$('#mentor').value});if(!data.documents||!data.match)throw Error('Incomplete result. Please try again.');packageData=data;originalText=resumeText;flags.clear();render();$('#work').style.display='none';$('#results').style.display='block';document.body.classList.add('res');set('review','Reviewing the draft. Check what changed.');countUp(data.match.score);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});}
+ try{const data=await api('generate',{resumeText,jobDescription,documents,company:$('#co').value,position:$('#po').value,notes:$('#ci').value,mentor:$('#mentor').value,provider:'gemini',cloudConsent:true});if(!data.documents||!data.match)throw Error('Incomplete result. Please try again.');packageData=data;originalText=resumeText;flags.clear();render();$('#work').style.display='none';$('#results').style.display='block';document.body.classList.add('res');set('review','Reviewing the draft. Check what changed.');countUp(data.match.score);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});}
  catch(e){error(e.message)}finally{busy=false;refreshControls();$('#gw').classList.remove('busy');$('#gen').textContent='Generate documents';wake()}
 };
 function tab(id){currentPane=id;document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.p===id)));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id));updateExport();}

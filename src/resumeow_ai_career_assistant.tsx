@@ -971,6 +971,16 @@ export default function App() {
   const [packageData, setPackageData] = useState(null);
   const [requestContext, setRequestContext] = useState(null);
   const [apiStatus, setApiStatus] = useState('Checking backend…');
+  const [providers,setProviders]=useState([]);
+  const [provider,setProvider]=useState('');
+  const [providerOpen,setProviderOpen]=useState(false);
+  const [cloudPermissions,setCloudPermissions]=useState(()=>{try{const v=JSON.parse(localStorage.getItem('resumeow_cloud_permissions_v1')||'{}');return v&&typeof v==='object'?v:{};}catch{return {};}});
+  const [masterMessage,setMasterMessage]=useState('');
+  const [deleteMasterArmed,setDeleteMasterArmed]=useState(false);
+  const selectedProvider=providers.find(p=>p.id===provider);
+  const cloudAllowed=selectedProvider?.cloud===false||cloudPermissions[provider]===true;
+  useEffect(()=>{try{localStorage.setItem('resumeow_cloud_permissions_v1',JSON.stringify(cloudPermissions));}catch{}},[cloudPermissions]);
+  useEffect(()=>{if(provider){try{localStorage.setItem('resumeow_provider_v1',provider);}catch{}}},[provider]);
   const busyRef = useRef(false);
   const [letterBusy, setLetterBusy] = useState(false);
 
@@ -1038,7 +1048,15 @@ export default function App() {
   }, [savedApps]);
 
   const activePreset = useMemo(() => displayModel(packageData), [packageData]);
-  useEffect(() => { requestApi('health').then(h=>setApiStatus(h.aiConfigured?'Gemini key configured':'AI setup required · .env.local')).catch(()=>setApiStatus('Backend unavailable')); }, []);
+  useEffect(()=>{
+    requestApi('health').then(h=>{
+      if(!Array.isArray(h.providers))throw Error('Update the backend.');
+      setProviders(h.providers);
+      let saved='';try{saved=localStorage.getItem('resumeow_provider_v1')||'';}catch{}
+      setProvider(h.providers.some(p=>p.id===saved)?saved:h.defaultProvider);
+      setApiStatus('Local extraction ready');
+    }).catch(()=>setApiStatus('Backend unavailable — restart server'));
+  },[]);
 
   // Close Demos Popover on Outside Click or Escape
   useEffect(() => {
@@ -1212,6 +1230,7 @@ export default function App() {
   const extractResume = async (format,data) => {
     const result=await requestApi('extract',{format,data});
     if(typeof result.text!=='string'||!result.text.trim())throw Error('No resume text found.');
+    setMasterMessage((result.warnings||[]).join(' '));
     setPlainSource(result.text);setVerified(false);setResumeFormat('text');
     setCat('idle','Check the extracted text and confirm it before generating.');
   };
@@ -1219,18 +1238,34 @@ export default function App() {
     if(!file||busyRef.current)return;
     const ext=file.name.split('.').pop().toLowerCase();
     if(!['pdf','tex','txt','md'].includes(ext)||file.size>5*1024*1024){setFormError('Choose a PDF, LaTeX or text file up to 5 MB.');return;}
-    if(['pdf','tex'].includes(ext)&&!window.confirm('Extract this file with Google Gemini? Its contents will be sent to Google.'))return;
+    setMasterMessage('');setDeleteMasterArmed(false);
     busyRef.current=true;setIsExtracting(true);setFileName(file.name);setFormError('');
-    setPlainSource('');setLatexSource('');setVerified(false);setSampleMode(false);setCat('upload','Reading your resume…');
+    setPlainSource('');setLatexSource('');setVerified(false);setSampleMode(false);setCat('upload','Reading your resume locally…');
     try{if(ext==='pdf')await extractResume('pdf',await fileToBase64(file));else if(ext==='tex')await extractResume('latex',await file.text());else{setPlainSource(await file.text());setResumeFormat('text');setCat('idle','Review your resume before generating.');}}
     catch(e){setFileName('');setFormError(e.message);setCat('error','I could not read that file.');}
     finally{busyRef.current=false;setIsExtracting(false);}
   };
   const handleExtractLatex=async()=>{
     if(busyRef.current||!latexSource.trim())return;
-    if(!window.confirm('Send this LaTeX source to Google Gemini to extract its visible text?'))return;
-    busyRef.current=true;setIsExtracting(true);setFormError('');setVerified(false);setCat('upload','Reading your LaTeX…');
+    setMasterMessage('');
+    busyRef.current=true;setIsExtracting(true);setFormError('');setVerified(false);setCat('upload','Reading your LaTeX locally…');
     try{await extractResume('latex',latexSource);}catch(e){setFormError(e.message);setCat('error','I could not read that LaTeX.');}
+    finally{busyRef.current=false;setIsExtracting(false);}
+  };
+  const masterAction=async(action)=>{
+    if(busyRef.current)return;
+    if(action==='save'&&(!verified||resumeFormat!=='text'||!plainSource.trim()||sampleMode)){setMasterMessage('Review and confirm your real resume before saving. Sample inputs cannot replace the master.');return;}
+    if(action==='delete'&&!deleteMasterArmed){setDeleteMasterArmed(true);setMasterMessage('Click Confirm delete to remove the saved master from this computer.');return;}
+    busyRef.current=true;setIsExtracting(true);setDeleteMasterArmed(false);setMasterMessage('');
+    try{
+      const result=action==='load'?await requestApi('master'):await requestApi('master',action==='save'?{action,text:plainSource.trim(),verified:true}:{action});
+      if(action==='load'){
+        if(!result.resume){setMasterMessage('No master resume saved yet.');return;}
+        setPlainSource(result.resume.text);setResumeFormat('text');setFileName('');setLatexSource('');setSampleMode(false);setVerified(true);
+        setMasterMessage('Saved master loaded. Review changes before generating.');setCat('idle','Your master resume is ready.');
+      }else if(action==='save')setMasterMessage('Verified master resume saved on this computer.');
+      else setMasterMessage('Saved master resume deleted. Any open draft remains unchanged.');
+    }catch(e){setMasterMessage(e.message);}
     finally{busyRef.current=false;setIsExtracting(false);}
   };
   const handleLoadPreset=(id)=>{
@@ -1241,7 +1276,7 @@ export default function App() {
     setCat('idle','Sample inputs loaded. Generation uses the real AI service.');
   };
   const handleResetWorkspace=()=>{
-    if(busyRef.current)return;setSampleMode(false);setFileName('');setPlainSource('');setLatexSource('');setVerified(false);setResumeFormat('pdf');
+    if(busyRef.current)return;setSampleMode(false);setFileName('');setPlainSource('');setLatexSource('');setVerified(false);setResumeFormat('pdf');setMasterMessage('');setDeleteMasterArmed(false);
     setCompany('');setPosition('');setJobDesc('');setNotes('');setIntensity('Balanced');setRecName('');setRecRel('');setRecDeadline('');
     setSelectedDocs({resume:true,coverLetter:true,recLetter:false});setFormError('');setDemosOpen(false);setView('workspace');setPackageData(null);
     setCat('idle','Fresh slate. Drop in your master resume to start.');
@@ -1263,11 +1298,12 @@ export default function App() {
     if(!jobDesc.trim())return fail('Add a job description first.');
     const documents=[...(selectedDocs.resume?['resume']:[]),...(selectedDocs.coverLetter?['coverLetter']:[]),...(selectedDocs.recLetter?['recommendation']:[])];
     if(!documents.length)return fail('Select at least one document.');
-    if(!window.confirm('Send your reviewed resume, job description and instructions to Google Gemini to generate drafts?'))return;
+    if(!selectedProvider?.configured){setProviderOpen(true);return fail('Configure an AI provider and model in .env.local. For local Ollama, install and start it first.');}
+    if(!cloudAllowed){setProviderOpen(true);return fail('Allow data sharing for the selected cloud provider in AI settings, or select local Ollama.');}
     const context={resumeText,jobDescription:jobDesc.trim(),company:company.trim(),position:position.trim(),notes,intensity,coverTone,mentor:recName,relationship:recRel,deadline:recDeadline};
     busyRef.current=true;setIsGenerating(true);setFormError('');setCat('generating','Typing up your documents…');
     try{
-      const data=mapPackage(await requestApi('generate',{...context,documents}),resumeText,documents);
+      const data=mapPackage(await requestApi('generate',{...context,documents,provider,cloudConsent:cloudAllowed}),resumeText,documents);
       setPackageData(data);setRequestContext(context);setRevertedIds([]);setAppliedSuggestionIds([]);setTappedSkills([]);setManualLatex(null);setRecManualBody(null);setSplitStudio(false);
       setCoverText(data.documents.coverLetter?.text||'');setRecDraft(splitEmail(data.documents.recommendation?.text,context.company,context.position));
       setActiveTab(selectedDocs.resume?'preview':selectedDocs.coverLetter?'cover':'rec');setHasCounted(false);setView('results');setCat('review','Review the AI drafts and check every fact.');
@@ -1310,9 +1346,9 @@ export default function App() {
 
   const regenerateLetter=async(type,nextTone=coverTone)=>{
     if(!requestContext||busyRef.current)return;
-    if(!window.confirm('Regenerate this draft using Google Gemini? This will replace the existing draft.'))return;
+    if(!selectedProvider?.configured||!cloudAllowed){setProviderOpen(true);setCat('error','Configure the selected provider and allow cloud sharing if needed.');return;}
     busyRef.current=true;setLetterBusy(true);setCat('generating','Rewriting your draft…');
-    try{const data=await requestApi('generate',{...requestContext,coverTone:nextTone,mentor:recName,relationship:recRel,deadline:recDeadline,documents:[type]});
+    try{const data=await requestApi('generate',{...requestContext,coverTone:nextTone,mentor:recName,relationship:recRel,deadline:recDeadline,documents:[type],provider,cloudConsent:cloudAllowed});
       const draft=data.documents?.[type]?.text;if(typeof draft!=='string'||!draft.trim())throw Error('Draft missing from response.');
       if(type==='coverLetter'){setCoverTone(nextTone);setCoverText(draft);}else{setRecDraft(splitEmail(draft,company,position));setRecManualBody(null);}
       setCat('review','Updated draft. Review before using it.');
@@ -1382,7 +1418,7 @@ export default function App() {
 
   const handleSaveCurrent=()=>{
     if(!packageData||!requestContext||busyRef.current)return;
-    if(!window.confirm('Save this application, including resume and drafts, in this browser? Avoid on shared computers.'))return;
+    // The Save button explicitly stores this draft locally; the UI labels the storage location.
     const entry={id:'app-'+Date.now(),company:company.trim()||'Target company',position:position.trim()||'Target role',status:'Draft',score:liveScores.total,savedAt:new Date().toLocaleDateString(),packageData,requestContext,selectedDocs,revertedIds,appliedSuggestionIds,tappedSkills,manualLatex,coverTone,coverText,recDraft,recManualBody,recName,recRel,recDeadline,sampleMode};
     const next=[entry,...savedApps];try{localStorage.setItem(SAVED_STORAGE_KEY,JSON.stringify(next));setSavedApps(next);setCat('success','Saved locally in this browser.');}catch{setCat('error','Could not save. Browser storage may be full or disabled.');}
   };
@@ -1542,6 +1578,22 @@ export default function App() {
             </button>
           </div>
         </header>
+        <div className="mb-4 border-b border-[var(--line)] pb-3 text-[13px]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-[var(--mute)]">AI: <strong className="text-[var(--ink)]">{selectedProvider?.label||'Not connected'}</strong>{selectedProvider?.model?' · '+selectedProvider.model:''}{selectedProvider?.cloud&&!selectedProvider.configured?' · setup required':''}{selectedProvider?.cloud&&!cloudAllowed?' · consent required':''}</span>
+            <button type="button" className={ghostBtn} aria-expanded={providerOpen} onClick={()=>setProviderOpen(v=>!v)}>AI settings <IconChevronDown/></button>
+          </div>
+          {providerOpen&&<div className="rm-fade mt-3 space-y-3 text-[var(--mute)]">
+            <label className="flex flex-wrap items-center gap-3">Provider
+              <select aria-label="AI provider" className="rm-field max-w-[320px]" value={provider} disabled={isGenerating||isExtracting||letterBusy} onChange={e=>setProvider(e.target.value)}>
+                {!providers.length&&<option value="">Backend unavailable</option>}
+                {providers.map(p=><option key={p.id} value={p.id} style={{background:'var(--bg)',color:'var(--ink)'}}>{p.label}{p.configured?'':' — configure first'}</option>)}
+              </select>
+            </label>
+            {selectedProvider?.cloud?<label className="flex items-start gap-2"><input type="checkbox" className="mt-1 accent-[var(--lav)]" checked={cloudPermissions[provider]===true} disabled={isGenerating||letterBusy} onChange={e=>setCloudPermissions(prev=>({...prev,[provider]:e.target.checked}))}/><span>Allow {selectedProvider.label} to receive my reviewed resume, job description and instructions when I generate or regenerate documents. Remember this choice on this browser; uncheck to revoke. Uploads and extraction stay on this computer.</span></label>:selectedProvider&&<p>Ollama runs on this computer. No cloud AI key is needed. Start Ollama and install the configured local model; readiness is not yet verified.</p>}
+            <p>Keys and model IDs are configured in the private server-side .env.local file. Restart the server after changes. Configured does not mean credentials have been tested.</p>
+          </div>}
+        </div>
 
         {/* ================================================================== */}
         {/* HERO (FULL EDITORIAL IN WORKSPACE / COMPACT STRIP IN RESULTS)      */}
@@ -1592,7 +1644,7 @@ export default function App() {
 
             {/* Quick Results Actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className={ghostBtn} disabled={letterBusy} onClick={handleSaveCurrent}>
+              <button type="button" className={ghostBtn} disabled={letterBusy} title="Save application and resume drafts in this browser" onClick={handleSaveCurrent}>
                 Save
               </button>
               <button type="button" className={ghostBtn} onClick={() => handleCopy()}>
@@ -1748,7 +1800,14 @@ export default function App() {
                 {resumeFormat==='latex' && <button type="button" className={ghostBtn} disabled={isExtracting||isGenerating||!latexSource.trim()} onClick={handleExtractLatex}>Extract and review text</button>}
                 {isExtracting && <p className="mt-2 text-[13px] text-[var(--mute)]">Extracting resume…</p>}
                 {resumeFormat==='text' && <label className="mt-3 flex items-center gap-2 text-[13.5px] text-[var(--mute)]"><input type="checkbox" checked={verified} disabled={isGenerating||isExtracting} onChange={e=>setVerified(e.target.checked)} className="accent-[var(--lav)]"/>I reviewed the resume text for accuracy.</label>}
-                <p className="mt-2 text-[12.5px] text-[var(--mute)]">Extraction and generation use Google Gemini after confirmation. Review all drafts before applying.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button type="button" className={ghostBtn} disabled={isExtracting||isGenerating||!verified||resumeFormat!=='text'||sampleMode} onClick={()=>masterAction('save')}>Save / replace master</button>
+                  <button type="button" className={ghostBtn} disabled={isExtracting||isGenerating} onClick={()=>masterAction('load')}>Load saved master</button>
+                  <button type="button" className="text-[13px] text-[var(--mute)] hover:text-[var(--err)]" disabled={isExtracting||isGenerating} onClick={()=>masterAction('delete')}>{deleteMasterArmed?'Confirm delete':'Delete saved master'}</button>
+                  {deleteMasterArmed&&<button type="button" className="text-[13px] text-[var(--mute)]" onClick={()=>{setDeleteMasterArmed(false);setMasterMessage('Deletion canceled.');}}>Cancel</button>}
+                </div>
+                {masterMessage&&<p role="status" className="mt-2 text-[13px] text-[var(--mute)]">{masterMessage}</p>}
+                <p className="mt-2 text-[12.5px] text-[var(--mute)]">PDF and LaTeX extraction are local. Saving stores reviewed text unencrypted on this computer. AI generation uses the provider you select. Review all drafts before applying.</p>
                 {/* Quiet 1-line Quick Stats */}
                 {resumeStats && (
                   <p className="mt-3 text-[13px] text-[var(--mute)]">
